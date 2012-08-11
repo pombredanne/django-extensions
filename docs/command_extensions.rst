@@ -3,6 +3,7 @@ Current Command Extensions
 
 :synopsis: Current Command Extensions
 
+* :doc:`shell_plus` - Django shell with autoloading of the apps database models
 
 * `create_app`_ - Creates an application directory structure for the specified
   app name.  This command allows you to specify the --template option where you
@@ -43,6 +44,8 @@ Current Command Extensions
 
 * *passwd* - Makes it easy to reset a user's password.
 
+* `print_settings`_ - Similar to ``diffsettings`` but shows *all* active Django settings.
+
 * *print_user_for_session* - Print the user information for the provided
   session key. this is very helpful when trying to track down the person who
   experienced a site crash.
@@ -70,9 +73,12 @@ Current Command Extensions
 * *show_urls* - Displays the url routes that are defined in your project. Very
   crude at this point.
 
-* *sqldiff* - Prints the (approximated) difference between an apps models and
+* :doc:`sqldiff` - Prints the (approximated) difference between an apps models and
   what is in the database.  This is very nice, but also very experimental at
   the moment.  It can not catch everything but it's a great sanity check.
+
+* :doc:`sqlcreate` - Generates the SQL to create your database for you, as specified
+  in settings.py.
 
 * `sync_media_s3`_ - Copies files found in settings.MEDIA_ROOT to S3.
   Optionally can also gzip CSS and Javascript files and set the
@@ -83,6 +89,7 @@ Current Command Extensions
 .. _`create_app`: create_app.html
 .. _`export_emails`: export_emails.html
 .. _`graph_models`: graph_models.html
+.. _`print_settings`: print_settings.html
 .. _`runserver_plus`: runserver_plus.html
 .. _`sync_media_s3`: sync_media_s3.html
 .. _GraphViz: http://www.graphviz.org/

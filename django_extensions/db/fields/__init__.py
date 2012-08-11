@@ -4,13 +4,18 @@ Django Extensions additional model fields
 
 from django.template.defaultfilters import slugify
 from django.db.models import DateTimeField, CharField, SlugField
-import datetime
 import re
 
 try:
     import uuid
 except ImportError:
     from django_extensions.utils import uuid
+
+try:
+    from django.utils.timezone import now as datetime_now
+except ImportError:
+    import datetime
+    datetime_now = datetime.datetime.now
 
 
 class AutoSlugField(SlugField):
@@ -45,6 +50,7 @@ class AutoSlugField(SlugField):
             self._populate_from = populate_from
         self.separator = kwargs.pop('separator', u'-')
         self.overwrite = kwargs.pop('overwrite', False)
+        self.allow_duplicates = kwargs.pop('allow_duplicates', False)
         super(AutoSlugField, self).__init__(*args, **kwargs)
 
     def _slug_strip(self, value):
@@ -60,7 +66,9 @@ class AutoSlugField(SlugField):
         return re.sub(r'^%s+|%s+$' % (re_sep, re_sep), '', value)
 
     def slugify_func(self, content):
-        return slugify(content)
+        if content:
+            return slugify(content)
+        return ''
 
     def create_slug(self, model_instance, add):
         # get fields to populate from and slug field to set
@@ -78,7 +86,7 @@ class AutoSlugField(SlugField):
             # step from its number, clean-up
             slug = self._slug_strip(getattr(model_instance, self.attname))
             next = slug.split(self.separator)[-1]
-            if next.isdigit():
+            if next.isdigit() and not self.allow_duplicates:
                 slug = self.separator.join(slug.split(self.separator)[:-1])
                 next = int(next)
             else:
@@ -91,6 +99,9 @@ class AutoSlugField(SlugField):
             slug = slug[:slug_len]
         slug = self._slug_strip(slug)
         original_slug = slug
+
+        if self.allow_duplicates:
+            return slug
 
         # exclude the current model instance from the queryset used in finding
         # the next valid slug
@@ -132,8 +143,14 @@ class AutoSlugField(SlugField):
         "Returns a suitable description of this field for South."
         # We'll just introspect the _actual_ field.
         from south.modelsinspector import introspector
-        field_class = "django.db.models.fields.SlugField"
+        field_class = '%s.AutoSlugField' % self.__module__
         args, kwargs = introspector(self)
+        kwargs.update({
+            'populate_from': repr(self._populate_from),
+            'separator': repr(self.separator),
+            'overwrite': repr(self.overwrite),
+            'allow_duplicates': repr(self.allow_duplicates),
+        })
         # That's our definition!
         return (field_class, args, kwargs)
 
@@ -147,7 +164,7 @@ class CreationDateTimeField(DateTimeField):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('editable', False)
         kwargs.setdefault('blank', True)
-        kwargs.setdefault('default', datetime.datetime.now)
+        kwargs.setdefault('default', datetime_now)
         DateTimeField.__init__(self, *args, **kwargs)
 
     def get_internal_type(self):
@@ -171,7 +188,7 @@ class ModificationDateTimeField(CreationDateTimeField):
     """
 
     def pre_save(self, model, add):
-        value = datetime.datetime.now()
+        value = datetime_now()
         setattr(model, self.attname, value)
         return value
 
@@ -242,12 +259,12 @@ class UUIDField(CharField):
             raise UUIDVersionError("UUID version %s is not valid." % self.version)
 
     def pre_save(self, model_instance, add):
-        if self.auto and add:
+        value = super(UUIDField, self).pre_save(model_instance, add)
+        if self.auto and add and value is None:
             value = unicode(self.create_uuid())
             setattr(model_instance, self.attname, value)
             return value
         else:
-            value = super(UUIDField, self).pre_save(model_instance, add)
             if self.auto and not value:
                 value = unicode(self.create_uuid())
                 setattr(model_instance, self.attname, value)
