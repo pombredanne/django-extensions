@@ -82,15 +82,11 @@ class AutoSlugField(SlugField):
             slug = self.separator.join(map(slug_for_field, self._populate_from))
             next = 2
         else:
-            # get slug from the current model instance and calculate next
-            # step from its number, clean-up
-            slug = self._slug_strip(getattr(model_instance, self.attname))
-            next = slug.split(self.separator)[-1]
-            if next.isdigit() and not self.allow_duplicates:
-                slug = self.separator.join(slug.split(self.separator)[:-1])
-                next = int(next)
-            else:
-                next = 2
+            # get slug from the current model instance
+            slug = getattr(model_instance, self.attname)
+            # model_instance is being modified, and overwrite is False,
+            # so instead of doing anything, just return the current slug
+            return slug
 
         # strip slug depending on max_length attribute of the slug field
         # and clean-up
@@ -220,6 +216,7 @@ class UUIDField(CharField):
     def __init__(self, verbose_name=None, name=None, auto=True, version=1, node=None, clock_seq=None, namespace=None, **kwargs):
         kwargs['max_length'] = 36
         if auto:
+            self.empty_strings_allowed = False
             kwargs['blank'] = True
             kwargs.setdefault('editable', False)
         self.auto = auto
@@ -269,6 +266,11 @@ class UUIDField(CharField):
                 value = unicode(self.create_uuid())
                 setattr(model_instance, self.attname, value)
         return value
+    
+    def formfield(self, **kwargs):
+        if self.auto:
+            return None
+        super(UUIDField, self).formfield(**kwargs)
 
     def south_field_triple(self):
         "Returns a suitable description of this field for South."

@@ -18,6 +18,12 @@ AWS_ACCESS_KEY_ID = ''
 AWS_SECRET_ACCESS_KEY = ''
 AWS_BUCKET_NAME = ''
 
+When you call this command with the `--renamegzip` param, it will add
+the '.gz' extension to the file name. But Safari just doesn't recognize
+'.gz' files and your site won't work on it! To fix this problem, you can
+set any other extension (like .jgz) in the `SYNC_S3_RENAME_GZIP_EXT`
+variable.
+
 Command options are:
   -p PREFIX, --prefix=PREFIX
                         The prefix to prepend to the path on S3.
@@ -27,10 +33,15 @@ Command options are:
                         files.
   --filter-list         Override default directory and file exclusion
                         filters. (enter as comma seperated line)
-  --renamegzip          Enables renaming of gzipped files by appending '.gz.
-                        to the original file name. This way your original assets
-                        will not be replaced by the gzipped ones if you don't want
-                        them to be. 
+  --renamegzip          Enables renaming of gzipped files by appending '.gz'.
+                        to the original file name. This way your original
+                        assets will not be replaced by the gzipped ones.
+                        You can change the extension setting the
+                        `SYNC_S3_RENAME_GZIP_EXT` var in your settings.py
+                        file.
+  --invalidate          Invalidates the objects in CloudFront after uploaading
+                        stuff to s3.
+
 
 TODO:
  * Use fnmatch (or regex) to allow more complex FILTER_LIST rules.
@@ -60,6 +71,9 @@ class Command(BaseCommand):
     AWS_ACCESS_KEY_ID = ''
     AWS_SECRET_ACCESS_KEY = ''
     AWS_BUCKET_NAME = ''
+    AWS_CLOUDFRONT_DISTRIBUTION = ''
+    SYNC_S3_RENAME_GZIP_EXT = ''
+
     DIRECTORY = ''
     FILTER_LIST = ['.DS_Store', '.svn', '.hg', '.git', 'Thumbs.db']
     GZIP_CONTENT_TYPES = (
@@ -69,6 +83,7 @@ class Command(BaseCommand):
         'text/javascript'
     )
 
+    uploaded_files = []
     upload_count = 0
     skip_count = 0
 
@@ -95,6 +110,9 @@ class Command(BaseCommand):
         optparse.make_option('--filter-list', dest='filter_list',
             action='store', default='',
             help="Override default directory and file exclusion filters. (enter as comma seperated line)"),
+        optparse.make_option('--invalidate', dest='invalidate', default=False,
+            action='store_true',
+            help='Invalidates the associated objects in CloudFront')
     )
 
     help = 'Syncs the complete MEDIA_ROOT structure and files to S3 into the given bucket name.'
@@ -127,12 +145,19 @@ class Command(BaseCommand):
             if not settings.MEDIA_ROOT:
                 raise CommandError('MEDIA_ROOT must be set in your settings.')
 
+        self.AWS_CLOUDFRONT_DISTRIBUTION = \
+            getattr(settings, 'AWS_CLOUDFRONT_DISTRIBUTION', '')
+
+        self.SYNC_S3_RENAME_GZIP_EXT = \
+            getattr(settings, 'SYNC_S3_RENAME_GZIP_EXT', '.gz')
+
         self.verbosity = int(options.get('verbosity'))
         self.prefix = options.get('prefix')
         self.do_gzip = options.get('gzip')
         self.rename_gzip = options.get('renamegzip')
         self.do_expires = options.get('expires')
         self.do_force = options.get('force')
+        self.invalidate = options.get('invalidate')
         self.DIRECTORY = options.get('dir')
         self.FILTER_LIST = getattr(settings, 'FILTER_LIST', self.FILTER_LIST)
         filter_list = options.get('filter_list')
@@ -145,9 +170,46 @@ class Command(BaseCommand):
         # upload all files found.
         self.sync_s3()
 
+        # Sending the invalidation request to CloudFront if the user
+        # requested this action
+        if self.invalidate:
+            self.invalidate_objects_cf()
+
         print
         print "%d files uploaded." % (self.upload_count)
         print "%d files skipped." % (self.skip_count)
+
+    def open_cf(self):
+        """
+        Returns an open connection to CloudFront
+        """
+        return boto.connect_cloudfront(
+            self.AWS_ACCESS_KEY_ID, self.AWS_SECRET_ACCESS_KEY)
+
+    def invalidate_objects_cf(self):
+        """
+        Split the invalidation request in groups of 1000 objects
+        """
+        if not self.AWS_CLOUDFRONT_DISTRIBUTION:
+            raise CommandError(
+                'An object invalidation was requested but the variable '
+                'AWS_CLOUDFRONT_DISTRIBUTION is not present in your settings.')
+
+        # We can't send more than 1000 objects in the same invalidation
+        # request.
+        chunk = 1000
+
+        # Connecting to CloudFront
+        conn = self.open_cf()
+
+        # Splitting the object list
+        objs = self.uploaded_files
+        chunks = [objs[i:i + chunk] for i in range(0, len(objs), chunk)]
+
+        # Invalidation requests
+        for paths in chunks:
+            conn.create_invalidation_request(
+                self.AWS_CLOUDFRONT_DISTRIBUTION, paths)
 
     def sync_s3(self):
         """
@@ -241,9 +303,12 @@ class Command(BaseCommand):
                 # and only if file is a common text type (not a binary file)
                 if file_size > 1024 and content_type in self.GZIP_CONTENT_TYPES:
                     filedata = self.compress_string(filedata)
-                    if self.rename_gzip: 
-                        #If rename_gzip is True, then rename the file by appending '.gz' to original filename
-                        file_key = '%s.gz' % (file_key)
+                    if self.rename_gzip:
+                        # If rename_gzip is True, then rename the file
+                        # by appending an extension (like '.gz)' to
+                        # original filename.
+                        file_key = '%s.%s' % (
+                            file_key, self.SYNC_S3_RENAME_GZIP_EXT)
                     headers['Content-Encoding'] = 'gzip'
                     if self.verbosity > 1:
                         print "\tgzipped: %dk to %dk" % \
@@ -270,6 +335,7 @@ class Command(BaseCommand):
                 raise
             else:
                 self.upload_count += 1
+                self.uploaded_files.append(file_key)
 
             file_obj.close()
 
