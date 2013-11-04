@@ -4,6 +4,37 @@ shell_plus
 :synopsis: Django shell with autoloading of the apps database models
 
 
+Interactive Python Shells
+-------------------------
+
+There is support for three different types of interactive python shells.
+
+IPython::
+
+  $ ./manage.py shell_plus --use-ipython
+
+
+BPython::
+
+  $ ./manage.py shell_plus --use-bpython
+
+
+Python::
+
+  $ ./manage.py shell_plus --use-plain
+
+
+The default resolution order is: bpython, ipython, python.
+
+You can also set the configuration option SHELL_PLUS to explicitly specify which version you want.
+
+::
+
+  # Always use IPython for shell_plus
+  SHELL_PLUS = "ipython"
+
+
+
 Configuration
 -------------
 
@@ -52,7 +83,8 @@ the ``IPYTHON_ARGUMENTS`` setting.  For example::
     IPYTHON_ARGUMENTS = [
         '--ext', 'django_extensions.management.notebook_extension',
         '--ext', 'myproject.notebook_extension',
-        '--debug']
+        '--debug',
+    ]
 
 To activate auto-loading, remember to either include django-extensions' default
 notebook extension or copy the auto-loading code from it into your own
@@ -62,3 +94,34 @@ Note that the IPython Notebook feature doesn't currently honor the
 ``--dont-load`` option.
 
 .. _`IPython Notebook`: http://ipython.org/ipython-doc/dev/interactive/htmlnotebook.html
+
+
+
+Additional Imports
+------------------
+
+In addition to importing the models you can also specify other items to import by default.
+These are specified in SHELL_PLUS_PRE_IMPORTS and SHELL_PLUS_POST_IMPORTS. The former is imported
+before any other imports (such as the default models import) and the latter is imported after any
+other imports. Both have similar syntax. So in you settings.py file:
+
+::
+
+    SHELL_PLUS_PRE_IMPORTS = (
+        ('module.submodule1', ('class1', 'function2')),
+        ('module.submodule2', 'function3'),
+        ('module.submodule3', '*'),
+        'module.submodule4'
+    )
+
+The above example would directly translate to the following python code which would be executed before
+the automatic imports:
+
+::
+
+    from module.submodule1 import class1, function2
+    from module.submodule2 import function3
+    from module.submodule3 import *
+    import module.submodule4
+
+These symbols will be available as soon as the shell starts.

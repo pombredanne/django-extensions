@@ -2,6 +2,10 @@
  Django Extensions
 ===================
 
+.. image:: https://secure.travis-ci.org/django-extensions/django-extensions.png?branch=master
+    :alt: Build Status
+    :target: http://travis-ci.org/django-extensions/django-extensions
+
 Django Extensions is a collection of custom extensions for the Django Framework.
 
 Getting Started
@@ -24,6 +28,18 @@ If you want to install it from source, grab the git repository from GitHub and r
  $ cd django-extensions
  $ python setup.py install
 
+Installing It
+=============
+
+To enable `django_extensions` in your project you need to add it to `INSTALLED_APPS` in your projects `settings.py` file::
+
+ INSTALLED_APPS = (
+     ...
+     'django_extensions',
+     ...
+ )
+
+
 Using It
 ========
 
@@ -38,18 +54,18 @@ Produce a tab-separated list of `(url_pattern, view_function, name)` tuples for 
 Getting Involved
 ================
 
-Open Source projects can always use more help. Fixing a problem, documenting a feature, adding translation in your language. If you have some time to spare and like to help us, here are the places to do so::
+Open Source projects can always use more help. Fixing a problem, documenting a feature, adding translation in your language. If you have some time to spare and like to help us, here are the places to do so:
 
-  GitHub: https://github.com/django-extensions/django-extensions
-  Mailinglist: http://groups.google.com/group/django-extensions
-  Translations: https://www.transifex.net/projects/p/django-extensions/
+- GitHub: https://github.com/django-extensions/django-extensions
+- Mailing list: http://groups.google.com/group/django-extensions
+- Translations: https://www.transifex.net/projects/p/django-extensions/
 
 Documentation
 =============
 
-You can view documentation online at::
+You can view documentation online at:
 
-  http://packages.python.org/django-extensions/
+- http://packages.python.org/django-extensions/
 
 Or you can look at the docs/ directory in the repository.
 

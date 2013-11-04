@@ -1,15 +1,19 @@
-import unittest
-
 from django.conf import settings
 from django.core.management import call_command
 from django.db.models import loading
 from django.db import models
+from django.utils import unittest
+
 from django_extensions.db.fields import AutoSlugField
 
 
 class SluggedTestModel(models.Model):
     title = models.CharField(max_length=42)
     slug = AutoSlugField(populate_from='title')
+
+
+class ChildSluggedTestModel(SluggedTestModel):
+    pass
 
 
 class AutoSlugFieldTest(unittest.TestCase):
@@ -87,3 +91,15 @@ class AutoSlugFieldTest(unittest.TestCase):
 
         n.save()
         self.assertEqual(n.slug, '-3')
+
+    def testInheritanceCreatesNextSlug(self):
+        m = SluggedTestModel(title='foo')
+        m.save()
+
+        n = ChildSluggedTestModel(title='foo')
+        n.save()
+        self.assertEqual(n.slug, 'foo-2')
+
+        o = SluggedTestModel(title='foo')
+        o.save()
+        self.assertEqual(o.slug, 'foo-3')

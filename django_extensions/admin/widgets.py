@@ -1,9 +1,13 @@
+import six
 import django
 from django import forms
 from django.conf import settings
 from django.contrib.admin.sites import site
 from django.utils.safestring import mark_safe
-from django.utils.text import truncate_words
+if django.get_version() >= "1.4":
+    from django.utils.text import Truncator
+else:
+    from django.utils.text import truncate_words
 from django.template.loader import render_to_string
 from django.contrib.admin.widgets import ForeignKeyRawIdWidget
 
@@ -22,8 +26,6 @@ class ForeignKeySearchInput(ForeignKeyRawIdWidget):
         js_files = ['django_extensions/js/jquery.bgiframe.min.js',
                     'django_extensions/js/jquery.ajaxQueue.js',
                     'django_extensions/js/jquery.autocomplete.js']
-        if django.get_version() < "1.3":
-            js_files.append('django_extensions/js/jquery.js')
         return forms.Media(css={'all': ('django_extensions/css/jquery.autocomplete.css',)},
                            js=js_files)
 
@@ -32,7 +34,10 @@ class ForeignKeySearchInput(ForeignKeyRawIdWidget):
     def label_for_value(self, value):
         key = self.rel.get_related_field().name
         obj = self.rel.to._default_manager.get(**{key: value})
-        return truncate_words(obj, 14)
+        if django.get_version() >= "1.4":
+            return Truncator(obj).words(14, truncate='...')
+        else:
+            return truncate_words(obj, 14)
 
     def __init__(self, rel, search_fields, attrs=None):
         self.search_fields = search_fields
@@ -61,7 +66,7 @@ class ForeignKeySearchInput(ForeignKeyRawIdWidget):
         if value:
             label = self.label_for_value(value)
         else:
-            label = u''
+            label = six.u('')
 
         try:
             admin_media_prefix = settings.ADMIN_MEDIA_PREFIX
@@ -78,7 +83,7 @@ class ForeignKeySearchInput(ForeignKeyRawIdWidget):
             'app_label': app_label,
             'label': label,
             'name': name,
-            'pre_django_14': (django.VERSION[:2]<(1,4)),
+            'pre_django_14': (django.VERSION[:2] < (1, 4)),
         }
         output.append(render_to_string(self.widget_template or (
             'django_extensions/widgets/%s/%s/foreignkey_searchinput.html' % (app_label, model_name),
@@ -86,4 +91,4 @@ class ForeignKeySearchInput(ForeignKeyRawIdWidget):
             'django_extensions/widgets/foreignkey_searchinput.html',
         ), context))
         output.reverse()
-        return mark_safe(u''.join(output))
+        return mark_safe(six.u('').join(output))

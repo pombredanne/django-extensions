@@ -1,21 +1,29 @@
 """
 Django Extensions additional model fields
 """
-
-from django.template.defaultfilters import slugify
-from django.db.models import DateTimeField, CharField, SlugField
 import re
-
+import six
 try:
     import uuid
+    HAS_UUID = True
 except ImportError:
-    from django_extensions.utils import uuid
+    HAS_UUID = False
+
+from django.core.exceptions import ImproperlyConfigured
+from django.template.defaultfilters import slugify
+from django.db.models import DateTimeField, CharField, SlugField
 
 try:
     from django.utils.timezone import now as datetime_now
+    assert datetime_now
 except ImportError:
     import datetime
     datetime_now = datetime.datetime.now
+
+try:
+    from django.utils.encoding import force_unicode  # NOQA
+except ImportError:
+    from django.utils.encoding import force_text as force_unicode  # NOQA
 
 
 class AutoSlugField(SlugField):
@@ -48,7 +56,7 @@ class AutoSlugField(SlugField):
             raise ValueError("missing 'populate_from' argument")
         else:
             self._populate_from = populate_from
-        self.separator = kwargs.pop('separator', u'-')
+        self.separator = kwargs.pop('separator', six.u('-'))
         self.overwrite = kwargs.pop('overwrite', False)
         self.allow_duplicates = kwargs.pop('allow_duplicates', False)
         super(AutoSlugField, self).__init__(*args, **kwargs)
@@ -64,6 +72,12 @@ class AutoSlugField(SlugField):
         re_sep = '(?:-|%s)' % re.escape(self.separator)
         value = re.sub('%s+' % re_sep, self.separator, value)
         return re.sub(r'^%s+|%s+$' % (re_sep, re_sep), '', value)
+
+    def get_queryset(self, model_cls, slug_field):
+        for field, model in model_cls._meta.get_fields_with_model():
+            if model and field == slug_field:
+                return model._default_manager.all()
+        return model_cls._default_manager.all()
 
     def slugify_func(self, content):
         if content:
@@ -101,7 +115,7 @@ class AutoSlugField(SlugField):
 
         # exclude the current model instance from the queryset used in finding
         # the next valid slug
-        queryset = model_instance.__class__._default_manager.all()
+        queryset = self.get_queryset(model_instance.__class__, slug_field)
         if model_instance.pk:
             queryset = queryset.exclude(pk=model_instance.pk)
 
@@ -128,7 +142,7 @@ class AutoSlugField(SlugField):
         return slug
 
     def pre_save(self, model_instance, add):
-        value = unicode(self.create_slug(model_instance, add))
+        value = force_unicode(self.create_slug(model_instance, add))
         setattr(model_instance, self.attname, value)
         return value
 
@@ -207,14 +221,16 @@ class UUIDVersionError(Exception):
 class UUIDField(CharField):
     """ UUIDField
 
-    By default uses UUID version 1 (generate from host ID, sequence number and current time)
+    By default uses UUID version 4 (randomly generated UUID).
 
-    The field support all uuid versions which are natively supported by the uuid python module.
+    The field support all uuid versions which are natively supported by the uuid python module, except version 2.
     For more information see: http://docs.python.org/lib/module-uuid.html
     """
 
-    def __init__(self, verbose_name=None, name=None, auto=True, version=1, node=None, clock_seq=None, namespace=None, **kwargs):
-        kwargs['max_length'] = 36
+    def __init__(self, verbose_name=None, name=None, auto=True, version=4, node=None, clock_seq=None, namespace=None, **kwargs):
+        if not HAS_UUID:
+            raise ImproperlyConfigured("'uuid' module is required for UUIDField. (Do you have Python 2.5 or higher installed ?)")
+        kwargs.setdefault('max_length', 36)
         if auto:
             self.empty_strings_allowed = False
             kwargs['blank'] = True
@@ -229,17 +245,6 @@ class UUIDField(CharField):
 
     def get_internal_type(self):
         return CharField.__name__
-
-    def contribute_to_class(self, cls, name):
-        if self.primary_key:
-            assert not cls._meta.has_auto_field, \
-              "A model can't have more than one AutoField: %s %s %s; have %s" % \
-               (self, cls, name, cls._meta.auto_field)
-            super(UUIDField, self).contribute_to_class(cls, name)
-            cls._meta.has_auto_field = True
-            cls._meta.auto_field = self
-        else:
-            super(UUIDField, self).contribute_to_class(cls, name)
 
     def create_uuid(self):
         if not self.version or self.version == 4:
@@ -258,19 +263,19 @@ class UUIDField(CharField):
     def pre_save(self, model_instance, add):
         value = super(UUIDField, self).pre_save(model_instance, add)
         if self.auto and add and value is None:
-            value = unicode(self.create_uuid())
+            value = force_unicode(self.create_uuid())
             setattr(model_instance, self.attname, value)
             return value
         else:
             if self.auto and not value:
-                value = unicode(self.create_uuid())
+                value = force_unicode(self.create_uuid())
                 setattr(model_instance, self.attname, value)
         return value
-    
+
     def formfield(self, **kwargs):
         if self.auto:
             return None
-        super(UUIDField, self).formfield(**kwargs)
+        return super(UUIDField, self).formfield(**kwargs)
 
     def south_field_triple(self):
         "Returns a suitable description of this field for South."
@@ -280,3 +285,8 @@ class UUIDField(CharField):
         args, kwargs = introspector(self)
         # That's our definition!
         return (field_class, args, kwargs)
+
+
+class PostgreSQLUUIDField(UUIDField):
+    def db_type(self, connection=None):
+        return "UUID"

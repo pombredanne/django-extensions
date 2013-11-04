@@ -53,7 +53,11 @@ class YearlyJob(BaseJob):
 
 
 def my_import(name):
-    imp = __import__(name)
+    try:
+        imp = __import__(name)
+    except ImportError as err:
+        raise JobError("Failed to import %s with error %s" % (name, err))
+
     mods = name.split('.')
     if len(mods) > 1:
         for mod in mods[1:]:
@@ -63,8 +67,7 @@ def my_import(name):
 
 def find_jobs(jobs_dir):
     try:
-        return [f[:-3] for f in os.listdir(jobs_dir) \
-                if not f.startswith('_') and f.endswith(".py")]
+        return [f[:-3] for f in os.listdir(jobs_dir) if not f.startswith('_') and f.endswith(".py")]
     except OSError:
         return []
 
@@ -90,7 +93,7 @@ def import_job(app_name, name, when=None):
         job = job_mod.Job
     except:
         raise JobError("Job module %s does not contain class instance named 'Job'" % jobmodule)
-    if when and not (job.when == when or job.when == None):
+    if when and not (job.when == when or job.when is None):
         raise JobError("Job %s is not a %s job." % (jobmodule, when))
     return job
 
@@ -123,7 +126,7 @@ def get_jobs(when=None, only_scheduled=False):
                         if (app_name, name) in _jobs:
                             raise JobError("Duplicate job %s" % name)
                         job = import_job(app_name, name, subdir)
-                        if only_scheduled and job.when == None:
+                        if only_scheduled and job.when is None:
                             # only include jobs which are scheduled
                             continue
                         if when and job.when != when:
@@ -147,10 +150,9 @@ def get_job(app_name, job_name):
         raise KeyError("Job not found: %s" % job_name)
 
 
-def print_jobs(when=None, only_scheduled=False, show_when=True, \
-                show_appname=False, show_header=True):
+def print_jobs(when=None, only_scheduled=False, show_when=True, show_appname=False, show_header=True):
     jobmap = get_jobs(when, only_scheduled=only_scheduled)
-    print "Job List: %i jobs" % len(jobmap)
+    print("Job List: %i jobs" % len(jobmap))
     jlist = jobmap.keys()
     jlist.sort()
     appname_spacer = "%%-%is" % max(len(e[0]) for e in jlist)
@@ -164,8 +166,8 @@ def print_jobs(when=None, only_scheduled=False, show_when=True, \
         if show_when:
             line += " - " + when_spacer % "when"
         line += " - help"
-        print line
-        print "-" * 80
+        print(line)
+        print("-" * 80)
 
     for app_name, job_name in jlist:
         job = jobmap[(app_name, job_name)]
@@ -176,4 +178,4 @@ def print_jobs(when=None, only_scheduled=False, show_when=True, \
         if show_when:
             line += " - " + when_spacer % (job.when and job.when or "")
         line += " - " + job.help
-        print line
+        print(line)

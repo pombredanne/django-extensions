@@ -15,8 +15,9 @@ dependclasses = ["User", "Group", "Permission", "Message"]
 import codecs
 import sys
 import gzip
-from xml.dom.minidom import *
+from xml.dom.minidom import *  # NOQA
 import re
+import six
 
 #Type dictionary translation types SQL -> Django
 tsd = {
@@ -75,7 +76,7 @@ def dia2django(archivo):
     datos = ppal.getElementsByTagName("dia:diagram")[0].getElementsByTagName("dia:layer")[0].getElementsByTagName("dia:object")
     clases = {}
     herit = []
-    imports = u""
+    imports = six.u("")
     for i in datos:
         #Look for the classes
         if i.getAttribute("type") == "UML - Class":
@@ -144,7 +145,7 @@ def dia2django(archivo):
                                     tc = "models." + tc
                                     if len(val) > 0:
                                         tc = tc.replace(")", "," + val + ")")
-                                elif varch == None:
+                                elif varch is None:
                                     tc = "models." + tsd[tc.strip().lower()] + "(" + val + ")"
                                 else:
                                     tc = "models.CharField(max_length=" + varch.group(1) + ")"
@@ -158,14 +159,14 @@ def dia2django(archivo):
             for j in a:
                 if len(j.getAttribute("to")):
                     mycons[int(j.getAttribute("handle"))] = j.getAttribute("to")
-            print mycons
+            print(mycons)
             if not 'A' in mycons:
                 herit.append(mycons)
         elif i.getAttribute("type") == "UML - SmallPackage":
             a = i.getElementsByTagName("dia:string")
             for j in a:
                 if len(j.childNodes[0].data[1:-1]):
-                    imports += u"from %s.models import *" % j.childNodes[0].data[1:-1]
+                    imports += six.u("from %s.models import *" % j.childNodes[0].data[1:-1])
 
     addparentstofks(herit, clases)
     #Ordering the appearance of classes
@@ -192,7 +193,7 @@ def dia2django(archivo):
             # swap %s in %s" % ( ordered[i] , ordered[mark]) to make ordered[i] to be at the end
             if ordered[i][0] in ordered[mark][1] and ordered[mark][0] in ordered[i][1]:
                 #Resolving simplistic circular ForeignKeys
-                print "Not able to resolve circular ForeignKeys between %s and %s" % (ordered[i][1], ordered[mark][0])
+                print("Not able to resolve circular ForeignKeys between %s and %s" % (ordered[i][1], ordered[mark][0]))
                 break
             a = ordered[i]
             ordered[i] = ordered[mark]
@@ -211,4 +212,4 @@ if __name__ == '__main__':
     if len(sys.argv) == 2:
         dia2django(sys.argv[1])
     else:
-        print " Use:\n \n   " + sys.argv[0] + " diagram.dia\n\n"
+        print(" Use:\n \n   " + sys.argv[0] + " diagram.dia\n\n")

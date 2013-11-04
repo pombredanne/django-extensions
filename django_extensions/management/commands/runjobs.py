@@ -6,7 +6,7 @@ from django_extensions.management.jobs import get_jobs, print_jobs
 class Command(LabelCommand):
     option_list = LabelCommand.option_list + (
         make_option('--list', '-l', action="store_true", dest="list_jobs",
-            help="List all jobs with their description"),
+                    help="List all jobs with their description"),
     )
     help = "Runs scheduled maintenance jobs."
     args = "[minutely quarter_hourly hourly daily weekly monthly yearly]"
@@ -15,7 +15,7 @@ class Command(LabelCommand):
     requires_model_validation = True
 
     def usage_msg(self):
-        print "Run scheduled jobs. Please specify 'minutely', 'quarter_hourly', 'hourly', 'daily', 'weekly', 'monthly' or 'yearly'"
+        print("Run scheduled jobs. Please specify 'minutely', 'quarter_hourly', 'hourly', 'daily', 'weekly', 'monthly' or 'yearly'")
 
     def runjobs(self, when, options):
         verbosity = int(options.get('verbosity', 1))
@@ -25,15 +25,15 @@ class Command(LabelCommand):
         for app_name, job_name in list:
             job = jobs[(app_name, job_name)]
             if verbosity > 1:
-                print "Executing %s job: %s (app: %s)" % (when, job_name, app_name)
+                print("Executing %s job: %s (app: %s)" % (when, job_name, app_name))
             try:
                 job().execute()
-            except Exception, e:
+            except Exception:
                 import traceback
-                print "ERROR OCCURED IN %s JOB: %s (APP: %s)" % (when.upper(), job_name, app_name)
-                print "START TRACEBACK:"
+                print("ERROR OCCURED IN %s JOB: %s (APP: %s)" % (when.upper(), job_name, app_name))
+                print("START TRACEBACK:")
                 traceback.print_exc()
-                print "END TRACEBACK\n"
+                print("END TRACEBACK\n")
 
     def runjobs_by_signals(self, when, options):
         """ Run jobs from the signals """
@@ -52,7 +52,7 @@ class Command(LabelCommand):
         for app in models.get_apps():
             if verbosity > 1:
                 app_name = '.'.join(app.__name__.rsplit('.')[:-1])
-                print "Sending %s job signal for: %s" % (when, app_name)
+                print("Sending %s job signal for: %s" % (when, app_name))
             if when == 'minutely':
                 signals.run_minutely_jobs.send(sender=app, app=app)
             elif when == 'quarter_hourly':
@@ -87,11 +87,3 @@ class Command(LabelCommand):
                 return
             self.runjobs(when, options)
             self.runjobs_by_signals(when, options)
-
-# Backwards compatibility for Django r9110
-if not [opt for opt in Command.option_list if opt.dest == 'verbosity']:
-    Command.option_list += (
-        make_option('--verbosity', '-v', action="store", dest="verbosity",
-            default='1', type='choice', choices=['0', '1', '2'],
-            help="Verbosity level; 0=minimal output, 1=normal output, 2=all output"),
-    )

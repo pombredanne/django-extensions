@@ -1,8 +1,13 @@
 from django.core.management.base import BaseCommand, CommandError
-from django.contrib.auth.models import User, Group
+try:
+    from django.contrib.auth import get_user_model  # Django 1.5
+except ImportError:
+    from django_extensions.future_1_5 import get_user_model
+from django.contrib.auth.models import Group
 from optparse import make_option
 from sys import stdout
 from csv import writer
+import six
 
 FORMATS = [
     'address',
@@ -15,7 +20,7 @@ FORMATS = [
 
 
 def full_name(first_name, last_name, username, **extra):
-    name = u" ".join(n for n in [first_name, last_name] if n)
+    name = six.u(" ").join(n for n in [first_name, last_name] if n)
     if not name:
         return username
     return name
@@ -24,9 +29,9 @@ def full_name(first_name, last_name, username, **extra):
 class Command(BaseCommand):
     option_list = BaseCommand.option_list + (
         make_option('--group', '-g', action='store', dest='group', default=None,
-            help='Limit to users which are part of the supplied group name'),
+                    help='Limit to users which are part of the supplied group name'),
         make_option('--format', '-f', action='store', dest='format', default=FORMATS[0],
-            help="output format. May be one of '" + "', '".join(FORMATS) + "'."),
+                    help="output format. May be one of '" + "', '".join(FORMATS) + "'."),
     )
 
     help = ("Export user email address list in one of a number of formats.")
@@ -42,15 +47,16 @@ class Command(BaseCommand):
             raise CommandError("extra arguments supplied")
         group = options['group']
         if group and not Group.objects.filter(name=group).count() == 1:
-            names = u"', '".join(g['name'] for g in Group.objects.values('name')).encode('utf-8')
+            names = six.u("', '").join(g['name'] for g in Group.objects.values('name')).encode('utf-8')
             if names:
                 names = "'" + names + "'."
             raise CommandError("Unknown group '" + group + "'. Valid group names are: " + names)
         if len(args) and args[0] != '-':
-            outfile = file(args[0], 'w')
+            outfile = open(args[0], 'w')
         else:
             outfile = stdout
 
+        User = get_user_model()
         qs = User.objects.all().order_by('last_name', 'first_name', 'username', 'email')
         if group:
             qs = qs.filter(group__name=group).distinct()
@@ -61,17 +67,17 @@ class Command(BaseCommand):
         """simple single entry per line in the format of:
             "full name" <my@address.com>;
         """
-        out.write(u"\n".join(u'"%s" <%s>;' % (full_name(**ent), ent['email'])
-                             for ent in qs).encode(self.encoding))
+        out.write(six.u("\n").join(six.u('"%s" <%s>;' % (full_name(**ent), ent['email']))
+                                   for ent in qs).encode(self.encoding))
         out.write("\n")
 
     def emails(self, qs, out):
         """simpler single entry with email only in the format of:
             my@address.com,
         """
-        out.write(u",\n".join(u'%s' % (ent['email']) for ent in qs).encode(self.encoding))
+        out.write(six.u(",\n").join(six.u('%s' % (ent['email'])) for ent in qs).encode(self.encoding))
         out.write("\n")
-        
+
     def google(self, qs, out):
         """CSV format suitable for importing into google GMail
         """
@@ -110,7 +116,7 @@ class Command(BaseCommand):
         try:
             import vobject
         except ImportError:
-            print self.style.ERROR("Please install python-vobject to use the vcard export format.")
+            print(self.style.ERROR("Please install python-vobject to use the vcard export format."))
             import sys
             sys.exit(1)
         for ent in qs:

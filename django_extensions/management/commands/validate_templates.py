@@ -1,9 +1,7 @@
 import os
-import sys
 from optparse import make_option
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management.color import color_style
-from django.template import Template
 from django.template.base import add_to_builtins
 from django.template.loaders.filesystem import Loader
 from django_extensions.utils import validatingtemplatetags
@@ -11,6 +9,7 @@ from django_extensions.utils import validatingtemplatetags
 #
 # TODO: Render the template with fake request object ?
 #
+
 
 class Command(BaseCommand):
     args = ''
@@ -51,22 +50,22 @@ class Command(BaseCommand):
                     if filename.endswith("~"):
                         continue
                     filepath = os.path.join(root, filename)
-                    if verbosity>1:
-                        print filepath
+                    if verbosity > 1:
+                        print(filepath)
                     validatingtemplatetags.before_new_template(options.get('force_new_urls', False))
                     try:
                         template_loader.load_template(filename, [root])
-                    except Exception, e:
+                    except Exception as e:
                         errors += 1
-                        print "%s: %s" % (filepath, style.ERROR("%s %s" % (e.__class__.__name__, str(e))))
+                        print("%s: %s" % (filepath, style.ERROR("%s %s" % (e.__class__.__name__, str(e)))))
                     template_errors = validatingtemplatetags.get_template_errors()
                     for origin, line, message in template_errors:
                         errors += 1
-                        print "%s(%s): %s" % (origin, line, style.ERROR(message))
+                        print("%s(%s): %s" % (origin, line, style.ERROR(message)))
                     if errors and options.get('break', False):
                         raise CommandError("Errors found")
 
         if errors:
             raise CommandError("%s errors found" % errors)
-        print "%s errors found" % errors
+        print("%s errors found" % errors)
 

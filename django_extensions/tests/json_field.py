@@ -1,10 +1,9 @@
-import unittest
-
-from django.db import connection
 from django.conf import settings
 from django.core.management import call_command
 from django.db.models import loading
 from django.db import models
+from django.utils import unittest
+
 from django_extensions.db.fields.json import JSONField
 
 
@@ -14,7 +13,6 @@ class TestModel(models.Model):
 
 
 class JsonFieldTest(unittest.TestCase):
-
     def setUp(self):
         self.old_installed_apps = settings.INSTALLED_APPS
         settings.INSTALLED_APPS = list(settings.INSTALLED_APPS)
@@ -27,9 +25,13 @@ class JsonFieldTest(unittest.TestCase):
 
     def testCharFieldCreate(self):
         j = TestModel.objects.create(a=6, j_field=dict(foo='bar'))
+        self.assertEqual(j.a, 6)
+
+    def testDefault(self):
+        j = TestModel.objects.create(a=1)
+        self.assertEqual(j.j_field, {})
 
     def testEmptyList(self):
         j = TestModel.objects.create(a=6, j_field=[])
         self.assertTrue(isinstance(j.j_field, list))
-        self.assertEquals(j.j_field, [])
-
+        self.assertEqual(j.j_field, [])

@@ -17,9 +17,9 @@ class Command(NoArgsCommand):
 
     option_list = NoArgsCommand.option_list + (
         make_option('--format', default='simple', dest='format',
-            help='Specifies output format.'),
+                    help='Specifies output format.'),
         make_option('--indent', default=4, dest='indent', type='int',
-            help='Specifies indent level for JSON and YAML'),
+                    help='Specifies indent level for JSON and YAML'),
     )
 
     def handle_noargs(self, **options):
@@ -35,10 +35,10 @@ class Command(NoArgsCommand):
 
         if output_format == 'json':
             json = self.import_json()
-            print json.dumps(a_dict, indent=indent)
+            print(json.dumps(a_dict, indent=indent))
         elif output_format == 'yaml':
             import yaml  # requires PyYAML
-            print yaml.dump(a_dict, indent=indent)
+            print(yaml.dump(a_dict, indent=indent))
         elif output_format == 'pprint':
             from pprint import pprint
             pprint(a_dict)
@@ -68,6 +68,5 @@ class Command(NoArgsCommand):
         try:
             import json
         except ImportError:
-            import simplejson as json
-        else:
-            return json
+            import simplejson as json  # NOQA
+        return json

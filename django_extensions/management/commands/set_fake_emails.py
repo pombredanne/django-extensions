@@ -17,19 +17,19 @@ DEFAULT_FAKE_EMAIL = '%(username)s@example.com'
 class Command(NoArgsCommand):
     option_list = NoArgsCommand.option_list + (
         make_option('--email', dest='default_email', default=DEFAULT_FAKE_EMAIL,
-            help='Use this as the new email format.'),
+                    help='Use this as the new email format.'),
         make_option('-a', '--no-admin', action="store_true", dest='no_admin', default=False,
-            help='Do not change administrator accounts'),
+                    help='Do not change administrator accounts'),
         make_option('-s', '--no-staff', action="store_true", dest='no_staff', default=False,
-            help='Do not change staff accounts'),
+                    help='Do not change staff accounts'),
         make_option('--include', dest='include_regexp', default=None,
-            help='Include usernames matching this regexp.'),
+                    help='Include usernames matching this regexp.'),
         make_option('--exclude', dest='exclude_regexp', default=None,
-            help='Exclude usernames matching this regexp.'),
+                    help='Exclude usernames matching this regexp.'),
         make_option('--include-groups', dest='include_groups', default=None,
-            help='Include users matching this group. (use comma seperation for multiple groups)'),
+                    help='Include users matching this group. (use comma seperation for multiple groups)'),
         make_option('--exclude-groups', dest='exclude_groups', default=None,
-            help='Exclude users matching this group. (use comma seperation for multiple groups)'),
+                    help='Exclude users matching this group. (use comma seperation for multiple groups)'),
     )
     help = '''DEBUG only: give all users a new email based on their account data ("%s" by default). Possible parameters are: username, first_name, last_name''' % (DEFAULT_FAKE_EMAIL, )
     requires_model_validation = False
@@ -38,7 +38,11 @@ class Command(NoArgsCommand):
         if not settings.DEBUG:
             raise CommandError('Only available in debug mode')
 
-        from django.contrib.auth.models import User, Group
+        try:
+            from django.contrib.auth import get_user_model  # Django 1.5
+        except ImportError:
+            from django_extensions.future_1_5 import get_user_model
+        from django.contrib.auth.models import Group
         email = options.get('default_email', DEFAULT_FAKE_EMAIL)
         include_regexp = options.get('include_regexp', None)
         exclude_regexp = options.get('exclude_regexp', None)
@@ -47,6 +51,7 @@ class Command(NoArgsCommand):
         no_admin = options.get('no_admin', False)
         no_staff = options.get('no_staff', False)
 
+        User = get_user_model()
         users = User.objects.all()
         if no_admin:
             users = users.exclude(is_superuser=True)
@@ -73,4 +78,4 @@ class Command(NoArgsCommand):
                                   'first_name': user.first_name,
                                   'last_name': user.last_name}
             user.save()
-        print 'Changed %d emails' % users.count()
+        print('Changed %d emails' % users.count())

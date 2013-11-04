@@ -1,14 +1,7 @@
 from django.core.management.base import BaseCommand
-from django.core.management.color import no_style
+from django.conf import settings
 from optparse import make_option
-import sys
-import os
 import imp
-
-try:
-    set
-except NameError:
-    from sets import Set as set   # Python 2.3 fallback
 
 
 def vararg_callback(option, opt_str, opt_value, parser):
@@ -30,23 +23,21 @@ def vararg_callback(option, opt_str, opt_value, parser):
 class Command(BaseCommand):
     option_list = BaseCommand.option_list + (
         make_option('--fixtures', action='store_true', dest='infixtures', default=False,
-            help='Only look in app.fixtures subdir'),
+                    help='Only look in app.fixtures subdir'),
         make_option('--noscripts', action='store_true', dest='noscripts', default=False,
-            help='Look in app.scripts subdir'),
+                    help='Look in app.scripts subdir'),
         make_option('-s', '--silent', action='store_true', dest='silent', default=False,
-            help='Run silently, do not show errors and tracebacks'),
+                    help='Run silently, do not show errors and tracebacks'),
         make_option('--no-traceback', action='store_true', dest='no_traceback', default=False,
-            help='Do not show tracebacks'),
+                    help='Do not show tracebacks'),
         make_option('--script-args', action='callback', callback=vararg_callback, type='string',
-            help='Space-separated argument list to be passed to the scripts. Note that the '
-                 'same arguments will be passed to all named scripts.'),
+                    help='Space-separated argument list to be passed to the scripts. Note that the '
+                         'same arguments will be passed to all named scripts.'),
     )
     help = 'Runs a script in django context.'
     args = "script [script ...]"
 
     def handle(self, *scripts, **options):
-        from django.db.models import get_apps
-
         NOTICE = self.style.SQL_TABLE
         NOTICE2 = self.style.SQL_FIELD
         ERROR = self.style.ERROR
@@ -71,59 +62,57 @@ class Command(BaseCommand):
             verbosity = 0
 
         if len(subdirs) < 1:
-            print NOTICE("No subdirs to run left.")
+            print(NOTICE("No subdirs to run left."))
             return
 
         if len(scripts) < 1:
-            print ERROR("Script name required.")
+            print(ERROR("Script name required."))
             return
 
         def run_script(mod, *script_args):
             try:
                 mod.run(*script_args)
-            except Exception, e:
+            except Exception:
                 if silent:
                     return
                 if verbosity > 0:
-                    print ERROR("Exception while running run() in '%s'" % mod.__name__)
+                    print(ERROR("Exception while running run() in '%s'" % mod.__name__))
                 if show_traceback:
                     raise
 
         def my_import(mod):
             if verbosity > 1:
-                print NOTICE("Check for %s" % mod)
+                print(NOTICE("Check for %s" % mod))
             # check if module exists before importing
             try:
                 path = None
-                full_path = mod.split('.')
                 for package in mod.split('.')[:-1]:
                     module_tuple = imp.find_module(package, path)
                     path = imp.load_module(package, *module_tuple).__path__
                 imp.find_module(mod.split('.')[-1], path)
+                t = __import__(mod, [], [], [" "])
             except (ImportError, AttributeError):
                 return False
 
-            t = __import__(mod, [], [], [" "])
             #if verbosity > 1:
-            #    print NOTICE("Found script %s ..." % mod)
+            #    print(NOTICE("Found script %s ..." % mod))
             if hasattr(t, "run"):
                 if verbosity > 1:
-                    print NOTICE2("Found script '%s' ..." % mod)
+                    print(NOTICE2("Found script '%s' ..." % mod))
                 #if verbosity > 1:
-                #    print NOTICE("found run() in %s. executing..." % mod)
+                #    print(NOTICE("found run() in %s. executing..." % mod))
                 return t
             else:
                 if verbosity > 1:
-                    print ERROR2("Find script '%s' but no run() function found." % mod)
+                    print(ERROR2("Find script '%s' but no run() function found." % mod))
 
         def find_modules_for_script(script):
             """ find script module which contains 'run' attribute """
             modules = []
             # first look in apps
-            for app in get_apps():
-                app_name = app.__name__.split(".")[:-1]  # + ['fixtures']
+            for app in settings.INSTALLED_APPS:
                 for subdir in subdirs:
-                    mod = my_import(".".join(app_name + [subdir, script]))
+                    mod = my_import("%s.%s.%s" % (app, subdir, script))
                     if mod:
                         modules.append(mod)
 
@@ -151,17 +140,8 @@ class Command(BaseCommand):
             modules = find_modules_for_script(script)
             if not modules:
                 if verbosity > 0 and not silent:
-                    print ERROR("No module for script '%s' found" % script)
+                    print(ERROR("No module for script '%s' found" % script))
             for mod in modules:
                 if verbosity > 1:
-                    print NOTICE2("Running script '%s' ..." % mod.__name__)
+                    print(NOTICE2("Running script '%s' ..." % mod.__name__))
                 run_script(mod, *script_args)
-
-
-# Backwards compatibility for Django r9110
-if not [opt for opt in Command.option_list if opt.dest == 'verbosity']:
-    Command.option_list += (
-        make_option('--verbosity', '-v', action="store", dest="verbosity",
-                    default='1', type='choice', choices=['0', '1', '2'],
-                    help="Verbosity level; 0=minimal output, 1=normal output, 2=all output"),
-    )
