@@ -1,8 +1,10 @@
+import six
 import sys
 from optparse import make_option, NO_DEFAULT
 from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
 from django_extensions.management.modelviz import generate_dot
+from django_extensions.management.utils import signalcommand
 
 
 try:
@@ -42,10 +44,12 @@ class Command(BaseCommand):
                     help='Exclude specific column(s) from the graph. Can also load exclude list from file.'),
         make_option('--exclude-models', '-X', action='store', dest='exclude_models',
                     help='Exclude specific model(s) from the graph. Can also load exclude list from file.'),
+        make_option('--include-models', '-I', action='store', dest='include_models',
+                    help='Restrict the graph to specified models.'),
         make_option('--inheritance', '-e', action='store_true', dest='inheritance', default=True,
                     help='Include inheritance arrows (default)'),
         make_option('--no-inheritance', '-E', action='store_false', dest='inheritance',
-                    help='Include inheritance arrows'),
+                    help='Do not include inheritance arrows'),
         make_option('--hide-relations-from-fields', '-R', action='store_false', dest="relations_as_fields",
                     default=True, help="Do not show relations as fields in the graph."),
         make_option('--disable-sort-fields', '-S', action="store_false", dest="sort_fields",
@@ -57,9 +61,9 @@ class Command(BaseCommand):
     args = "[appname]"
     label = 'application name'
 
-    requires_model_validation = True
     can_import_settings = True
 
+    @signalcommand
     def handle(self, *args, **options):
         self.options_from_settings(options)
 
@@ -101,6 +105,9 @@ class Command(BaseCommand):
                             options[option.dest] = defaults[long_opt]
 
     def print_output(self, dotdata):
+        if six.PY3 and isinstance(dotdata, six.binary_type):
+            dotdata = dotdata.decode()
+
         print(dotdata)
 
     def render_output_pygraphviz(self, dotdata, **kwargs):

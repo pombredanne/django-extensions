@@ -6,6 +6,9 @@ Current Command Extensions
 * :doc:`shell_plus` - An enhanced version of the Django shell.  It will autoload
   all your models making it easy to work with the ORM right away.
 
+* *admin_generator* - Generate automatic Django Admin classes by providing an app name. Outputs
+  source code at STDOUT.
+
 * `create_app`_ - Creates an application directory structure for the specified
   app name.  This command allows you to specify the --template option where you
   can indicate a template directory structure to use as your default.
@@ -14,6 +17,9 @@ Current Command Extensions
   specified application.  This makes it easy to get started with adding a
   command extension to your application.
 
+* *create_template_tags* - Creates a template tag directory structure within the
+  specified application.
+
 * *create_jobs* - Creates a Django jobs command directory structure for the
   given app name in the current directory.  This is part of the impressive jobs
   system.
@@ -21,7 +27,9 @@ Current Command Extensions
 * *create_superuser* - Makes it easy to create a superuser for the
   django.contrib.auth.
 
-* *describe_form* - Used to display a form definition for a model.  Copy and
+* *clear_cache* - Clear django cache, useful when testing or deploying.
+
+* *describe_form* - Used to display a form definition for a model. Copy and
   paste the contents into your forms.py and you're ready to go.
 
 * :doc:`dumpscript <dumpscript>` - Generates a Python script that will
@@ -45,13 +53,14 @@ Current Command Extensions
 
 * *passwd* - Makes it easy to reset a user's password.
 
-* `print_settings`_ - Similar to ``diffsettings`` but shows *all* active Django settings.
+* `print_settings`_ - Similar to ``diffsettings`` but shows *selected*
+  active Django settings or *all* if no args passed.
 
 * *print_user_for_session* - Print the user information for the provided
   session key. this is very helpful when trying to track down the person who
   experienced a site crash.
 
-* *reset_db* - Resets a database (currently sqlite3, mysql, postgres).
+* *reset_db* - Resets a database (currently sqlite3, mysql, postgres). Uses "DROP DATABASE" and "CREATE DATABASE".
 
 * *runjob* - Run a single maintenance job.  Part of the jobs system.
 
@@ -71,7 +80,7 @@ Current Command Extensions
 * *show_urls* - Displays the url routes that are defined in your project. Very
   crude at this point.
 
-* :doc:`sqldiff` - Prints the (approximated) difference between an apps models and
+* :doc:`sqldiff` - Prints the (approximated) difference between an app's models and
   what is in the database.  This is very nice, but also very experimental at
   the moment.  It can not catch everything but it's a great sanity check.
 

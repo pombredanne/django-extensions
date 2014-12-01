@@ -3,6 +3,50 @@
 import sys
 import shutil
 import tempfile
+
+try:
+    import django
+except ImportError:
+    print("Error: missing test dependency:")
+    print("  django library is needed to run test suite")
+    print("  you can install it with 'pip install django'")
+    print("  or use tox to automatically handle test dependencies")
+    sys.exit(1)
+
+try:
+    import shortuuid
+except ImportError:
+    print("Error: missing test dependency:")
+    print("  shortuuid library is needed to run test suite")
+    print("  you can install it with 'pip install shortuuid'")
+    print("  or use tox to automatically handle test dependencies")
+    sys.exit(1)
+
+try:
+    import dateutil
+except ImportError:
+    print("Error: missing test dependency:")
+    print("  dateutil library is needed to run test suite")
+    print("  you can install it with 'pip install python-dateutil'")
+    print("  or use tox to automatically handle test dependencies")
+    sys.exit(1)
+
+try:
+    import six
+except ImportError:
+    print("Error: missing test dependency:")
+    print("  six library is needed to run test suite")
+    print("  you can install it with 'pip install six'")
+    print("  or use tox to automatically handle test dependencies")
+    sys.exit(1)
+
+__test_libs__ = [
+    django,
+    shortuuid,
+    dateutil,
+    six
+]
+
 from django.conf import settings
 
 
@@ -34,14 +78,15 @@ def main():
                 'django.contrib.contenttypes',
                 'django.contrib.admin',
                 'django.contrib.sessions',
+                'django_extensions.tests.testapp',
                 'django_extensions',
-                'django_extensions.tests',
             ],
             # Django replaces this, but it still wants it. *shrugs*
             DATABASE_ENGINE='django.db.backends.sqlite3',
             DATABASES={
                 'default': {
                     'ENGINE': 'django.db.backends.sqlite3',
+                    'NAME': ':memory:',
                 }
             },
             MEDIA_ROOT='/tmp/django_extensions_test_media/',
@@ -52,9 +97,38 @@ def main():
             ENCRYPTED_FIELD_KEYS_DIR=KEY_LOCS,
         )
 
+        if django.VERSION[:2] >= (1, 7):
+            django.setup()
+
+        apps = ['django_extensions']
+        if django.VERSION[:2] >= (1, 6):
+            apps.append('django_extensions.tests.testapp')
+            apps.append('django_extensions.tests')
+
+        from django.core.management import call_command
         from django.test.utils import get_runner
-        test_runner = get_runner(settings)(verbosity=2, interactive=True)
-        failures = test_runner.run_tests(['django_extensions'])
+
+        try:
+            from django.contrib.auth import get_user_model
+        except ImportError:
+            USERNAME_FIELD = "username"
+        else:
+            USERNAME_FIELD = get_user_model().USERNAME_FIELD
+
+        DjangoTestRunner = get_runner(settings)
+
+        class TestRunner(DjangoTestRunner):
+            def setup_databases(self, *args, **kwargs):
+                result = super(TestRunner, self).setup_databases(*args, **kwargs)
+                kwargs = {
+                    "interactive": False,
+                    "email": "admin@doesnotexit.com",
+                    USERNAME_FIELD: "admin",
+                }
+                call_command("createsuperuser", **kwargs)
+                return result
+
+        failures = TestRunner(verbosity=2, interactive=True).run_tests(apps)
         sys.exit(failures)
 
     finally:

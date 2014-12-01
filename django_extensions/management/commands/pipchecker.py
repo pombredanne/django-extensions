@@ -1,16 +1,24 @@
-#!/usr/bin/env python
 import os
 import pip
 import sys
 import json
-import urllib2
-import urlparse
-import xmlrpclib
+
 from distutils.version import LooseVersion
 from django.core.management.base import NoArgsCommand
 from django_extensions.management.color import color_style
 from optparse import make_option
 from pip.req import parse_requirements
+from django_extensions.management.utils import signalcommand
+try:
+    from urllib.parse import urlparse
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+    from xmlrpc.client import ServerProxy
+except ImportError:
+    # Python 2
+    from urlparse import urlparse
+    from urllib2 import HTTPError, Request, urlopen
+    from xmlrpclib import ServerProxy
 
 try:
     import requests
@@ -38,6 +46,7 @@ class Command(NoArgsCommand):
     )
     help = "Scan pip requirement files for out-of-date packages."
 
+    @signalcommand
     def handle_noargs(self, **options):
         self.style = color_style()
 
@@ -82,8 +91,8 @@ class Command(NoArgsCommand):
 
     def _urlopen_as_json(self, url, headers=None):
         """Shorcut for return contents as json"""
-        req = urllib2.Request(url, headers=headers)
-        return json.loads(urllib2.urlopen(req).read())
+        req = Request(url, headers=headers)
+        return json.loads(urlopen(req).read())
 
     def check_pypi(self):
         """
@@ -94,8 +103,8 @@ class Command(NoArgsCommand):
             if name in self.reqs.keys():
                 self.reqs[name]["dist"] = dist
 
-        pypi = xmlrpclib.ServerProxy("http://pypi.python.org/pypi")
-        for name, req in self.reqs.items():
+        pypi = ServerProxy("http://pypi.python.org/pypi")
+        for name, req in list(self.reqs.items()):
             if req["url"]:
                 continue  # skipping github packages.
             elif "dist" in req:
@@ -165,7 +174,7 @@ class Command(NoArgsCommand):
             git+git://github.com/django/django.git#egg=Django
 
         """
-        for name, req in self.reqs.items():
+        for name, req in list(self.reqs.items()):
             req_url = req["url"]
             if not req_url:
                 continue
@@ -180,7 +189,7 @@ class Command(NoArgsCommand):
             if self.github_api_token:
                 headers["Authorization"] = "token {0}".format(self.github_api_token)
             try:
-                user, repo = urlparse.urlparse(req_url).path.split("#")[0].strip("/").rstrip("/").split("/")
+                user, repo = urlparse(req_url).path.split("#")[0].strip("/").rstrip("/").split("/")
             except (ValueError, IndexError) as e:
                 print(self.style.ERROR("\nFailed to parse %r: %s\n" % (req_url, e)))
                 continue
@@ -188,7 +197,7 @@ class Command(NoArgsCommand):
             try:
                 #test_auth = self._urlopen_as_json("https://api.github.com/django/", headers=headers)
                 test_auth = requests.get("https://api.github.com/django/", headers=headers).json()
-            except urllib2.HTTPError as e:
+            except HTTPError as e:
                 print("\n%s\n" % str(e))
                 return
 

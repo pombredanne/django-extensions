@@ -21,6 +21,8 @@ try:
 except ImportError as e:
     USE_STATICFILES = False
 
+from django_extensions.management.utils import signalcommand
+
 try:
     any
 except NameError:
@@ -135,9 +137,7 @@ class Command(BaseCommand):
     help = "Starts a lightweight Web server with profiling enabled."
     args = '[optional port number, or ipaddr:port]'
 
-    # Validation is called explicitly each time the server is reloaded.
-    requires_model_validation = False
-
+    @signalcommand
     def handle(self, addrport='', *args, **options):
         import django
         import socket
@@ -254,7 +254,10 @@ class Command(BaseCommand):
                 return handler
 
             print("Validating models...")
-            self.validate(display_num_errors=True)
+            if hasattr(self, 'check'):
+                self.check(display_num_errors=True)
+            else:
+                self.validate(display_num_errors=True)
             print("\nDjango version %s, using settings %r" % (django.get_version(), settings.SETTINGS_MODULE))
             print("Development server is running at http://%s:%s/" % (addr, port))
             print("Quit the server with %s." % quit_command)

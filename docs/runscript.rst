@@ -7,9 +7,9 @@ RunScript
 Introduction
 ------------
 
-The runscript command lets you run any arbritrary set of python commands within
+The runscript command lets you run an arbritrary set of python commands within
 the django context. It offers the same usability and functionality as running a
-set of command in shell accessed by::
+set of commands in shell accessed by::
 
   $ python manage.py shell
 
@@ -49,7 +49,7 @@ For example::
 
 Note: You can put a script inside a *scripts* folder in any of your apps too.
 
-Using
+Usage
 -----
 
 To run any script you use the command *runscript* with the name of the script
@@ -63,3 +63,26 @@ Note: The command first checks for scripts in your apps i.e. *app_name/scripts*
 folder and runs them before checking for and running scripts in the
 *project_root/scripts* folder. You can have multiple scripts with the same name
 and they will all be run sequentially.
+
+Passing arguments
+-----------------
+
+You can pass arguments from the command line to your script by passing a comma-separated
+list of values with ``--script-args``. For example::
+
+  $ python manage.py runscript delete_all_polls --script-args=staleonly
+
+The list of argument values gets passed as arguments to your *run()* function. For
+example::
+
+  # scripts/delete_all_polls.py
+  
+  from Polls.models import Poll
+  
+  def run(*args):
+      # Get all polls
+      all_polls = Poll.object.all()
+      if 'staleonly' in args:
+          all_polls = all_polls.filter(active=False)
+      # Delete polls
+      all_polls.delete()

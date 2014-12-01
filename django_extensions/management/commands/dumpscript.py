@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 """
       Title: Dumpscript management command
@@ -33,18 +32,22 @@ Improvements:
 import sys
 import datetime
 import six
+from optparse import make_option
 
 import django
-from django.db.models import AutoField, BooleanField, FileField, ForeignKey
+from django.db.models import AutoField, BooleanField, FileField, ForeignKey, DateField, DateTimeField
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand
 
 # conditional import, force_unicode was renamed in Django 1.5
 from django.contrib.contenttypes.models import ContentType
+
 try:
     from django.utils.encoding import smart_unicode, force_unicode  # NOQA
 except ImportError:
     from django.utils.encoding import smart_text as smart_unicode, force_text as force_unicode  # NOQA
+
+from django_extensions.management.utils import signalcommand
 
 
 def orm_item_locator(orm_obj):
@@ -81,9 +84,15 @@ def orm_item_locator(orm_obj):
 
 
 class Command(BaseCommand):
+    option_list = BaseCommand.option_list + (
+        make_option('--autofield', action='store_false', dest='skip_autofield',
+                    default=True, help='Include Autofields (like pk fields)'),
+    )
+
     help = 'Dumps the data as a customised python script.'
     args = '[appname ...]'
 
+    @signalcommand
     def handle(self, *app_labels, **options):
 
         # Get the models we want to export
@@ -95,7 +104,14 @@ class Command(BaseCommand):
         context = {}
 
         # Create a dumpscript object and let it format itself as a string
-        self.stdout.write(str(Script(models=models, context=context, stdout=self.stdout, stderr=self.stderr)))
+        script = Script(
+            models=models,
+            context=context,
+            stdout=self.stdout,
+            stderr=self.stderr,
+            options=options,
+        )
+        self.stdout.write(str(script))
         self.stdout.write("\n")
 
 
@@ -118,6 +134,7 @@ def get_models(app_labels):
     if not app_labels:
         for app in get_apps():
             models += [m for m in get_all_models(app) if m not in EXCLUDED_MODELS]
+        return models
 
     # Get all relevant apps
     for app_label in app_labels:
@@ -172,12 +189,13 @@ class Code(object):
 class ModelCode(Code):
     " Produces a python script that can recreate data for a given model class. "
 
-    def __init__(self, model, context=None, stdout=None, stderr=None):
+    def __init__(self, model, context=None, stdout=None, stderr=None, options=None):
         super(ModelCode, self).__init__(indent=0, stdout=stdout, stderr=stderr)
         self.model = model
         if context is None:
             context = {}
         self.context = context
+        self.options = options
         self.instances = []
 
     def get_imports(self):
@@ -194,7 +212,7 @@ class ModelCode(Code):
         code = []
 
         for counter, item in enumerate(self.model._default_manager.all()):
-            instance = InstanceCode(instance=item, id=counter + 1, context=self.context, stdout=self.stdout, stderr=self.stderr)
+            instance = InstanceCode(instance=item, id=counter + 1, context=self.context, stdout=self.stdout, stderr=self.stderr, options=self.options)
             self.instances.append(instance)
             if instance.waiting_list:
                 code += instance.lines
@@ -213,12 +231,13 @@ class ModelCode(Code):
 class InstanceCode(Code):
     " Produces a python script that can recreate data for a given model instance. "
 
-    def __init__(self, instance, id, context=None, stdout=None, stderr=None):
+    def __init__(self, instance, id, context=None, stdout=None, stderr=None, options=None):
         """ We need the instance in question and an id """
 
         super(InstanceCode, self).__init__(indent=0, stdout=stdout, stderr=stderr)
         self.imports = {}
 
+        self.options = options
         self.instance = instance
         self.model = self.instance.__class__
         if context is None:
@@ -329,9 +348,12 @@ class InstanceCode(Code):
             # TODO: check if batches are really needed. If not, remove them.
             sub_objects = sum([list(i) for i in collector.data.values()], [])
 
-            for batch in collector.batches.values():
-                # batch.values can be sets, which must be converted to lists
-                sub_objects += sum([list(i) for i in batch.values()], [])
+            if hasattr(collector, 'batches'):
+                # Django 1.6 removed batches for being dead code
+                # https://github.com/django/django/commit/a170c3f755351beb35f8166ec3c7e9d524d9602
+                for batch in collector.batches.values():
+                    # batch.values can be sets, which must be converted to lists
+                    sub_objects += sum([list(i) for i in batch.values()], [])
 
         sub_objects_parents = [so._meta.parents for so in sub_objects]
         if [self.model in p for p in sub_objects_parents].count(True) == 1:
@@ -366,12 +388,13 @@ class InstanceCode(Code):
         " Add lines for any waiting fields that can be completed now. "
 
         code_lines = []
+        skip_autofield = self.options.get('skip_autofield', True)
 
         # Process normal fields
         for field in list(self.waiting_list):
             try:
                 # Find the value, add the line, remove from waiting list and move on
-                value = get_attribute_value(self.instance, field, self.context, force=force)
+                value = get_attribute_value(self.instance, field, self.context, force=force, skip_autofield=skip_autofield)
                 code_lines.append('%s.%s = %s' % (self.variable_name, field.name, value))
                 self.waiting_list.remove(field)
             except SkipValue:
@@ -413,7 +436,7 @@ class InstanceCode(Code):
 class Script(Code):
     " Produces a complete python script that can recreate data for the given apps. "
 
-    def __init__(self, models, context=None, stdout=None, stderr=None):
+    def __init__(self, models, context=None, stdout=None, stderr=None, options=None):
         super(Script, self).__init__(stdout=stdout, stderr=stderr)
         self.imports = {}
 
@@ -424,6 +447,8 @@ class Script(Code):
 
         self.context["__avaliable_models"] = set(models)
         self.context["__extra_imports"] = {}
+
+        self.options = options
 
     def _queue_models(self, models, context):
         """ Works an an appropriate ordering for the models.
@@ -445,7 +470,7 @@ class Script(Code):
 
             # If the model is ready to be processed, add it to the list
             if check_dependencies(model, model_queue, context["__avaliable_models"]):
-                model_class = ModelCode(model=model, context=context, stdout=self.stdout, stderr=self.stderr)
+                model_class = ModelCode(model=model, context=context, stdout=self.stdout, stderr=self.stderr, options=self.options)
                 model_queue.append(model_class)
 
             # Otherwise put the model back at the end of the list
@@ -460,7 +485,7 @@ class Script(Code):
                 allowed_cycles -= 1
                 if allowed_cycles <= 0:
                     # Add the remaining models, but do not remove them from the model list
-                    missing_models = [ModelCode(model=m, context=context, stdout=self.stdout, stderr=self.stderr) for m in models]
+                    missing_models = [ModelCode(model=m, context=context, stdout=self.stdout, stderr=self.stderr, options=self.options) for m in models]
                     model_queue += missing_models
                     # Replace the models with the model class objects
                     # (sure, this is a little bit of hackery)
@@ -481,7 +506,7 @@ class Script(Code):
         for model_class in self._queue_models(self.models, context=self.context):
             msg = 'Processing model: %s\n' % model_class.model.__name__
             self.stderr.write(msg)
-            code.append("    #" + msg)
+            code.append("    # " + msg)
             code.append(model_class.import_lines)
             code.append("")
             code.append(model_class.lines)
@@ -490,12 +515,12 @@ class Script(Code):
         for model in self.models:
             msg = 'Re-processing model: %s\n' % model.model.__name__
             self.stderr.write(msg)
-            code.append("    #" + msg)
+            code.append("    # " + msg)
             for instance in model.instances:
                 if instance.waiting_list or instance.many_to_many_waiting_list:
                     code.append(instance.get_lines(force=True))
 
-        code.insert(1, "    #initial imports")
+        code.insert(1, "    # Initial Imports")
         code.insert(2, "")
         for key, value in self.context["__extra_imports"].items():
             code.insert(2, "    from %s import %s" % (value, key))
@@ -552,36 +577,36 @@ class BasicImportHelper(object):
         pass
 
     def locate_similar(self, current_object, search_data):
-        #you will probably want to call this method from save_or_locate()
-        #example:
-        #new_obj = self.locate_similar(the_obj, {"national_id": the_obj.national_id } )
+        # You will probably want to call this method from save_or_locate()
+        # Example:
+        #   new_obj = self.locate_similar(the_obj, {"national_id": the_obj.national_id } )
 
         the_obj = current_object.__class__.objects.get(**search_data)
         return the_obj
 
     def locate_object(self, original_class, original_pk_name, the_class, pk_name, pk_value, obj_content):
-        #You may change this function to do specific lookup for specific objects
+        # You may change this function to do specific lookup for specific objects
         #
-        #original_class class of the django orm's object that needs to be located
-        #original_pk_name the primary key of original_class
-        #the_class      parent class of original_class which contains obj_content
-        #pk_name        the primary key of original_class
-        #pk_value       value of the primary_key
-        #obj_content    content of the object which was not exported.
+        # original_class class of the django orm's object that needs to be located
+        # original_pk_name the primary key of original_class
+        # the_class      parent class of original_class which contains obj_content
+        # pk_name        the primary key of original_class
+        # pk_value       value of the primary_key
+        # obj_content    content of the object which was not exported.
         #
-        #you should use obj_content to locate the object on the target db
+        # You should use obj_content to locate the object on the target db
         #
-        #and example where original_class and the_class are different is
-        #when original_class is Farmer and
-        #the_class is Person. The table may refer to a Farmer but you will actually
-        #need to locate Person in order to instantiate that Farmer
+        # An example where original_class and the_class are different is
+        # when original_class is Farmer and the_class is Person. The table
+        # may refer to a Farmer but you will actually need to locate Person
+        # in order to instantiate that Farmer
         #
-        #example:
-        #if the_class == SurveyResultFormat or the_class == SurveyType or the_class == SurveyState:
-        #    pk_name="name"
-        #    pk_value=obj_content[pk_name]
-        #if the_class == StaffGroup:
-        #    pk_value=8
+        # Example:
+        #   if the_class == SurveyResultFormat or the_class == SurveyType or the_class == SurveyState:
+        #       pk_name="name"
+        #       pk_value=obj_content[pk_name]
+        #   if the_class == StaffGroup:
+        #       pk_value=8
 
         search_data = { pk_name: pk_value }
         the_obj = the_class.objects.get(**search_data)
@@ -590,7 +615,7 @@ class BasicImportHelper(object):
 
 
     def save_or_locate(self, the_obj):
-        #change this if you want to locate the object in the database
+        # Change this if you want to locate the object in the database
         try:
             the_obj.save()
         except:
@@ -611,8 +636,8 @@ class BasicImportHelper(object):
 importer = None
 try:
     import import_helper
-    #we need this so ImportHelper can extend BasicImportHelper, although import_helper.py
-    #has no knowlodge of this class
+    # We need this so ImportHelper can extend BasicImportHelper, although import_helper.py
+    # has no knowlodge of this class
     importer = type("DynamicImportHelper", (import_helper.ImportHelper, BasicImportHelper ) , {} )()
 except ImportError as e:
     if str(e) == "No module named import_helper":
@@ -623,6 +648,12 @@ except ImportError as e:
 import datetime
 from decimal import Decimal
 from django.contrib.contenttypes.models import ContentType
+
+try:
+    import dateutil.parser
+except ImportError:
+    print("Please install python-dateutil")
+    sys.exit(os.EX_USAGE)
 
 def run():
     importer.pre_import()
@@ -656,7 +687,7 @@ def flatten_blocks(lines, num_indents=-1):
     return "\n".join([flatten_blocks(line, num_indents + 1) for line in lines])
 
 
-def get_attribute_value(item, field, context, force=False):
+def get_attribute_value(item, field, context, force=False, skip_autofield=True):
     """ Gets a string version of the given attribute's value, like repr() might. """
 
     # Find the value of the field, catching any database issues
@@ -666,7 +697,7 @@ def get_attribute_value(item, field, context, force=False):
         raise SkipValue('Could not find object for %s.%s, ignoring.\n' % (item.__class__.__name__, field.name))
 
     # AutoField: We don't include the auto fields, they'll be automatically recreated
-    if isinstance(field, AutoField):
+    if skip_autofield and isinstance(field, AutoField):
         raise SkipValue()
 
     # Some databases (eg MySQL) might store boolean values as 0/1, this needs to be cast as a bool
@@ -705,6 +736,9 @@ def get_attribute_value(item, field, context, force=False):
             return item_locator
         else:
             raise DoLater('(FK) %s.%s\n' % (item.__class__.__name__, field.name))
+
+    elif isinstance(field, (DateField, DateTimeField)) and value is not None:
+        return "dateutil.parser.parse(\"%s\")" % value.isoformat()
 
     # A normal field (e.g. a python built-in)
     else:

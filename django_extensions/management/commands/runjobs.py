@@ -1,6 +1,7 @@
 from django.core.management.base import LabelCommand
 from optparse import make_option
 from django_extensions.management.jobs import get_jobs, print_jobs
+from django_extensions.management.utils import signalcommand
 
 
 class Command(LabelCommand):
@@ -11,8 +12,6 @@ class Command(LabelCommand):
     help = "Runs scheduled maintenance jobs."
     args = "[minutely quarter_hourly hourly daily weekly monthly yearly]"
     label = ""
-
-    requires_model_validation = True
 
     def usage_msg(self):
         print("Run scheduled jobs. Please specify 'minutely', 'quarter_hourly', 'hourly', 'daily', 'weekly', 'monthly' or 'yearly'")
@@ -68,6 +67,7 @@ class Command(LabelCommand):
             elif when == 'yearly':
                 signals.run_yearly_jobs.send(sender=app, app=app)
 
+    @signalcommand
     def handle(self, *args, **options):
         when = None
         if len(args) > 1:

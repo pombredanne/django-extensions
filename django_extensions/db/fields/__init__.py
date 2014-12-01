@@ -3,11 +3,19 @@ Django Extensions additional model fields
 """
 import re
 import six
+import warnings
+
 try:
     import uuid
     HAS_UUID = True
 except ImportError:
     HAS_UUID = False
+
+try:
+    import shortuuid
+    HAS_SHORT_UUID = True
+except ImportError:
+    HAS_SHORT_UUID = False
 
 from django.core.exceptions import ImproperlyConfigured
 from django.template.defaultfilters import slugify
@@ -56,9 +64,15 @@ class AutoSlugField(SlugField):
             raise ValueError("missing 'populate_from' argument")
         else:
             self._populate_from = populate_from
+
+        self.slugify_function = kwargs.pop('slugify_function', slugify)
         self.separator = kwargs.pop('separator', six.u('-'))
         self.overwrite = kwargs.pop('overwrite', False)
+        if not isinstance(self.overwrite, bool):
+            raise ValueError("'overwrite' argument must be True or False")
         self.allow_duplicates = kwargs.pop('allow_duplicates', False)
+        if not isinstance(self.allow_duplicates, bool):
+            raise ValueError("'allow_duplicates' argument must be True or False")
         super(AutoSlugField, self).__init__(*args, **kwargs)
 
     def _slug_strip(self, value):
@@ -81,7 +95,7 @@ class AutoSlugField(SlugField):
 
     def slugify_func(self, content):
         if content:
-            return slugify(content)
+            return self.slugify_function(content)
         return ''
 
     def create_slug(self, model_instance, add):
@@ -164,6 +178,17 @@ class AutoSlugField(SlugField):
         # That's our definition!
         return (field_class, args, kwargs)
 
+    def deconstruct(self):
+        name, path, args, kwargs = super(AutoSlugField, self).deconstruct()
+        kwargs['populate_from'] = self._populate_from
+        if not self.separator == six.u('-'):
+            kwargs['separator'] = self.separator
+        if self.overwrite is not False:
+            kwargs['overwrite'] = True
+        if self.allow_duplicates is not False:
+            kwargs['allow_duplicates'] = True
+        return name, path, args, kwargs
+
 
 class CreationDateTimeField(DateTimeField):
     """ CreationDateTimeField
@@ -187,6 +212,16 @@ class CreationDateTimeField(DateTimeField):
         field_class = "django.db.models.fields.DateTimeField"
         args, kwargs = introspector(self)
         return (field_class, args, kwargs)
+
+    def deconstruct(self):
+        name, path, args, kwargs = super(CreationDateTimeField, self).deconstruct()
+        if self.editable is not False:
+            kwargs['editable'] = True
+        if self.blank is not True:
+            kwargs['blank'] = False
+        if self.default is not datetime_now:
+            kwargs['default'] = self.default
+        return name, path, args, kwargs
 
 
 class ModificationDateTimeField(CreationDateTimeField):
@@ -226,25 +261,25 @@ class UUIDField(CharField):
     The field support all uuid versions which are natively supported by the uuid python module, except version 2.
     For more information see: http://docs.python.org/lib/module-uuid.html
     """
+    DEFAULT_MAX_LENGTH = 36
 
-    def __init__(self, verbose_name=None, name=None, auto=True, version=4, node=None, clock_seq=None, namespace=None, **kwargs):
+    def __init__(self, verbose_name=None, name=None, auto=True, version=4, node=None, clock_seq=None, namespace=None, uuid_name=None, *args, **kwargs):
+        warnings.warn("Django 1.8 features a native UUIDField, this UUIDField will be removed after Django 1.7 becomes unsupported.", DeprecationWarning)
+
         if not HAS_UUID:
             raise ImproperlyConfigured("'uuid' module is required for UUIDField. (Do you have Python 2.5 or higher installed ?)")
-        kwargs.setdefault('max_length', 36)
+        kwargs.setdefault('max_length', self.DEFAULT_MAX_LENGTH)
         if auto:
             self.empty_strings_allowed = False
             kwargs['blank'] = True
             kwargs.setdefault('editable', False)
         self.auto = auto
         self.version = version
-        if version == 1:
-            self.node, self.clock_seq = node, clock_seq
-        elif version == 3 or version == 5:
-            self.namespace, self.name = namespace, name
-        CharField.__init__(self, verbose_name, name, **kwargs)
-
-    def get_internal_type(self):
-        return CharField.__name__
+        self.node = node
+        self.clock_seq = clock_seq
+        self.namespace = namespace
+        self.uuid_name = uuid_name or name
+        super(UUIDField, self).__init__(verbose_name=verbose_name, *args, **kwargs)
 
     def create_uuid(self):
         if not self.version or self.version == 4:
@@ -254,9 +289,9 @@ class UUIDField(CharField):
         elif self.version == 2:
             raise UUIDVersionError("UUID version 2 is not supported.")
         elif self.version == 3:
-            return uuid.uuid3(self.namespace, self.name)
+            return uuid.uuid3(self.namespace, self.uuid_name)
         elif self.version == 5:
-            return uuid.uuid5(self.namespace, self.name)
+            return uuid.uuid5(self.namespace, self.uuid_name)
         else:
             raise UUIDVersionError("UUID version %s is not valid." % self.version)
 
@@ -286,7 +321,70 @@ class UUIDField(CharField):
         # That's our definition!
         return (field_class, args, kwargs)
 
+    def deconstruct(self):
+        name, path, args, kwargs = super(UUIDField, self).deconstruct()
+        if kwargs.get('max_length', None) == self.DEFAULT_MAX_LENGTH:
+            del kwargs['max_length']
+        if self.auto is not True:
+            kwargs['auto'] = self.auto
+        if self.version != 4:
+            kwargs['version'] = self.version
+        if self.node is not None:
+            kwargs['node'] = self.node
+        if self.clock_seq is not None:
+            kwargs['clock_seq'] = self.clock_seq
+        if self.namespace is not None:
+            kwargs['namespace'] = self.namespace
+        if self.uuid_name is not None:
+            kwargs['uuid_name'] = self.name
+        return name, path, args, kwargs
+
 
 class PostgreSQLUUIDField(UUIDField):
+    def __init__(self, *args, **kwargs):
+        warnings.warn("Django 1.8 features a native UUIDField, this UUIDField will be removed after Django 1.7 becomes unsupported.", DeprecationWarning)
+        super(PostgreSQLUUIDField, self).__init__(*args, **kwargs)
+
     def db_type(self, connection=None):
         return "UUID"
+
+    def get_db_prep_value(self, value, connection, prepared=False):
+        if isinstance(value, six.integer_types):
+            value = uuid.UUID(int=value)
+        elif isinstance(value, (six.string_types, six.binary_type)):
+            if len(value) == 16:
+                value = uuid.UUID(bytes=value)
+            else:
+                value = uuid.UUID(value)
+        return super(PostgreSQLUUIDField, self).get_db_prep_value(
+            value, connection, prepared=False)
+
+
+class ShortUUIDField(UUIDField):
+    """ ShortUUIDFied
+
+    Generates concise (22 characters instead of 36), unambiguous, URL-safe UUIDs.
+
+    Based on `shortuuid`: https://github.com/stochastic-technologies/shortuuid
+    """
+    DEFAULT_MAX_LENGTH = 22
+
+    def __init__(self, *args, **kwargs):
+        super(ShortUUIDField, self).__init__(*args, **kwargs)
+        if not HAS_SHORT_UUID:
+            raise ImproperlyConfigured("'shortuuid' module is required for ShortUUIDField. (Do you have Python 2.5 or higher installed ?)")
+        kwargs.setdefault('max_length', self.DEFAULT_MAX_LENGTH)
+
+    def create_uuid(self):
+        if not self.version or self.version == 4:
+            return shortuuid.uuid()
+        elif self.version == 1:
+            return shortuuid.uuid()
+        elif self.version == 2:
+            raise UUIDVersionError("UUID version 2 is not supported.")
+        elif self.version == 3:
+            raise UUIDVersionError("UUID version 3 is not supported.")
+        elif self.version == 5:
+            return shortuuid.uuid(name=self.namespace)
+        else:
+            raise UUIDVersionError("UUID version %s is not valid." % self.version)

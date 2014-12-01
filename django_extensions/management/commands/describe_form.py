@@ -1,5 +1,6 @@
 from django.core.management.base import LabelCommand, CommandError
 from django.utils.encoding import force_unicode
+from django_extensions.management.utils import signalcommand
 
 
 class Command(LabelCommand):
@@ -7,9 +8,9 @@ class Command(LabelCommand):
     args = "[app.model]"
     label = 'application name and model name'
 
-    requires_model_validation = True
     can_import_settings = True
 
+    @signalcommand
     def handle_label(self, label, **options):
         return describe_form(label)
 
@@ -30,10 +31,10 @@ def describe_form(label, fields=None):
     for f in opts.fields + opts.many_to_many:
         if not f.editable:
             continue
-        if fields and not f.name in fields:
+        if fields and f.name not in fields:
             continue
         formfield = f.formfield()
-        if not '__dict__' in dir(formfield):
+        if '__dict__' not in dir(formfield):
             continue
         attrs = {}
         valid_fields = ['required', 'initial', 'max_length', 'min_length', 'max_value', 'min_value', 'max_digits', 'decimal_places', 'choices', 'help_text', 'label']

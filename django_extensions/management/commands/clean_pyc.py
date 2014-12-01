@@ -1,13 +1,17 @@
-from django.core.management.base import NoArgsCommand
-from django_extensions.management.utils import get_project_root
+import os
+import fnmatch
+from django.core.management.base import NoArgsCommand, CommandError
+from django.conf import settings
 from optparse import make_option
 from os.path import join as _j
-import os
+
+from django_extensions.management.utils import signalcommand
 
 
 class Command(NoArgsCommand):
     option_list = NoArgsCommand.option_list + (
-        make_option('--optimize', '-o', '-O', action='store_true', dest='optimize',
+        make_option('--optimize', '-o', '-O', action='store_true',
+                    dest='optimize',
                     help='Remove optimized python bytecode files'),
         make_option('--path', '-p', action='store', dest='path',
                     help='Specify path to recurse into'),
@@ -16,22 +20,21 @@ class Command(NoArgsCommand):
 
     requires_model_validation = False
 
+    @signalcommand
     def handle_noargs(self, **options):
-        project_root = options.get("path", None)
+        project_root = options.get("path", getattr(settings, 'BASE_DIR', None))
         if not project_root:
-            project_root = get_project_root()
-        exts = options.get("optimize", False) and [".pyc", ".pyo"] or [".pyc"]
-        verbose = int(options.get("verbosity", 1))
+            project_root = getattr(settings, 'BASE_DIR', None)
 
-        if verbose > 1:
-            print("Project Root: %s" % project_root)
+        verbosity = int(options.get("verbosity"))
+        if not project_root:
+            raise CommandError("No --path specified and settings.py does not contain BASE_DIR")
 
-        for root, dirs, files in os.walk(project_root):
-            for file in files:
-                ext = os.path.splitext(file)[1]
-                if ext in exts:
-                    full_path = _j(root, file)
-                    if verbose > 1:
-                        print(full_path)
-                    os.remove(full_path)
+        exts = options.get("optimize", False) and "*.py[co]" or "*.pyc"
 
+        for root, dirs, filenames in os.walk(project_root):
+            for filename in fnmatch.filter(filenames, exts):
+                full_path = _j(root, filename)
+                if verbosity > 1:
+                    self.stdout.write("%s\n" % full_path)
+                os.remove(full_path)

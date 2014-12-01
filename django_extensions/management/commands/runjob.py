@@ -1,6 +1,7 @@
 from django.core.management.base import LabelCommand
 from optparse import make_option
 from django_extensions.management.jobs import get_job, print_jobs
+from django_extensions.management.utils import signalcommand
 
 
 class Command(LabelCommand):
@@ -12,8 +13,6 @@ class Command(LabelCommand):
     args = "[app_name] job_name"
     label = ""
 
-    requires_model_validation = True
-
     def runjob(self, app_name, job_name, options):
         verbosity = int(options.get('verbosity', 1))
         if verbosity > 1:
@@ -22,7 +21,7 @@ class Command(LabelCommand):
             job = get_job(app_name, job_name)
         except KeyError:
             if app_name:
-                print("Error: Job %s for applabel %s not found" % (app_name, job_name))
+                print("Error: Job %s for applabel %s not found" % (job_name, app_name))
             else:
                 print("Error: Job %s not found" % job_name)
             print("Use -l option to view all the available jobs")
@@ -36,6 +35,7 @@ class Command(LabelCommand):
             traceback.print_exc()
             print("END TRACEBACK\n")
 
+    @signalcommand
     def handle(self, *args, **options):
         app_name = None
         job_name = None

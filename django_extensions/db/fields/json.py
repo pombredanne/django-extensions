@@ -9,7 +9,7 @@ more information.
  class LOL(models.Model):
      extra = json.JSONField()
 """
-
+from __future__ import absolute_import
 import six
 from decimal import Decimal
 from django.db import models
@@ -17,11 +17,11 @@ from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 
 try:
-    # Django <= 1.6 backwards compatibility
-    from django.utils import simplejson as json
-except ImportError:
     # Django >= 1.7
     import json
+except ImportError:
+    # Django <= 1.6 backwards compatibility
+    from django.utils import simplejson as json
 
 
 def dumps(value):
@@ -41,6 +41,14 @@ class JSONDict(dict):
     """
     Hack so repr() called by dumpdata will output JSON instead of
     Python formatted data.  This way fixtures will work!
+    """
+    def __repr__(self):
+        return dumps(self)
+
+
+class JSONUnicode(six.text_type):
+    """
+    As above
     """
     def __repr__(self):
         return dumps(self)
@@ -74,25 +82,31 @@ class JSONField(six.with_metaclass(models.SubfieldBase, models.TextField)):
             res = loads(value)
             if isinstance(res, dict):
                 return JSONDict(**res)
-            else:
+            elif isinstance(res, six.string_types):
+                return JSONUnicode(res)
+            elif isinstance(res, list):
                 return JSONList(res)
-
+            return res
         else:
             return value
 
-    def get_db_prep_save(self, value, connection):
+    def get_db_prep_save(self, value, connection, **kwargs):
         """Convert our JSON object to a string before we save"""
-        if not isinstance(value, (list, dict)):
-            return super(JSONField, self).get_db_prep_save("", connection=connection)
-        else:
-            return super(JSONField, self).get_db_prep_save(dumps(value),
-                                                           connection=connection)
+        if value is None and self.null:
+            return None
+        return super(JSONField, self).get_db_prep_save(dumps(value), connection=connection)
 
     def south_field_triple(self):
-        "Returns a suitable description of this field for South."
+        """Returns a suitable description of this field for South."""
         # We'll just introspect the _actual_ field.
         from south.modelsinspector import introspector
         field_class = "django.db.models.fields.TextField"
         args, kwargs = introspector(self)
         # That's our definition!
         return (field_class, args, kwargs)
+
+    def deconstruct(self):
+        name, path, args, kwargs = super(JSONField, self).deconstruct()
+        if self.default == '{}':
+            del kwargs['default']
+        return name, path, args, kwargs

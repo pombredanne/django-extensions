@@ -14,6 +14,8 @@ import six
 from django.core.management.base import BaseCommand
 from django.core.management.color import no_style
 
+from django_extensions.management.utils import signalcommand
+
 
 class Command(BaseCommand):
     """ syncdata command """
@@ -29,13 +31,13 @@ class Command(BaseCommand):
         """
         for class_ in objects_to_keep.keys():
             current = class_.objects.all()
-            current_ids = set([x.id for x in current])
-            keep_ids = set([x.id for x in objects_to_keep[class_]])
+            current_ids = set([x.pk for x in current])
+            keep_ids = set([x.pk for x in objects_to_keep[class_]])
 
             remove_these_ones = current_ids.difference(keep_ids)
             if remove_these_ones:
                 for obj in current:
-                    if obj.id in remove_these_ones:
+                    if obj.pk in remove_these_ones:
                         obj.delete()
                         if verbosity >= 2:
                             print("Deleted object: %s" % six.u(obj))
@@ -49,6 +51,7 @@ class Command(BaseCommand):
 
                 print("Deleted %s %s" % (str(num_deleted), type_deleted))
 
+    @signalcommand
     def handle(self, *fixture_labels, **options):
         """ Main method of a Django command """
         from django.db.models import get_apps
@@ -138,7 +141,7 @@ class Command(BaseCommand):
                                     objects_per_fixture[-1] += 1
 
                                     class_ = obj.object.__class__
-                                    if not class_ in objects_to_keep:
+                                    if class_ not in objects_to_keep:
                                         objects_to_keep[class_] = set()
                                     objects_to_keep[class_].add(obj.object)
 

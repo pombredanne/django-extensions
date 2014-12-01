@@ -1,6 +1,7 @@
 from importlib import import_module
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django_extensions.management.utils import signalcommand
 
 try:
     from django.contrib.auth import get_user_model  # Django 1.5
@@ -20,9 +21,9 @@ class Command(BaseCommand):
     args = "session_key"
     label = 'session key for the user'
 
-    requires_model_validation = True
     can_import_settings = True
 
+    @signalcommand
     def handle(self, *args, **options):
         if len(args) > 1:
             raise CommandError("extra arguments supplied")
@@ -62,5 +63,10 @@ class Command(BaseCommand):
             print("No user associated with that id.")
             return
 
-        for key in ['username', 'email', 'first_name', 'last_name']:
+        username_field = 'username'
+
+        if hasattr(User, 'USERNAME_FIELD') and User.USERNAME_FIELD is not None:
+            username_field = User.USERNAME_FIELD
+
+        for key in [username_field, 'email', 'first_name', 'last_name']:
             print("%s: %s" % (key, getattr(user, key)))

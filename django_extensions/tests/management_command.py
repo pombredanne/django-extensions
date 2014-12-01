@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import sys
 import logging
 
 try:
@@ -58,3 +59,49 @@ class ShowTemplateTagsTests(TestCase):
         self.assertIn('django_extensions', output)
         # let's check at least one
         self.assertIn('truncate_letters', output)
+
+
+class UpdatePermissionsTests(TestCase):
+    def test_works(self):
+        from django.db import models
+
+        class PermModel(models.Model):
+            class Meta:
+                app_label = 'django_extensions'
+                permissions = (('test_permission', 'test_permission'),)
+
+        original_stdout = sys.stdout
+        out = sys.stdout = StringIO()
+        call_command('update_permissions', stdout=out, verbosity=3)
+        sys.stdout = original_stdout
+        self.assertIn("Can change perm model", out.getvalue())
+
+
+class CommandSignalTests(TestCase):
+    pre = None
+    post = None
+
+    def test_works(self):
+        from django_extensions.management.signals import post_command, \
+            pre_command
+        from django_extensions.management.commands.show_templatetags import \
+            Command
+
+        def pre(sender, **kwargs):
+            CommandSignalTests.pre = dict(**kwargs)
+
+        def post(sender, **kwargs):
+            CommandSignalTests.post = dict(**kwargs)
+
+        pre_command.connect(pre, Command)
+        post_command.connect(post, Command)
+
+        out = StringIO()
+        call_command('show_templatetags', stdout=out)
+
+        self.assertIn('args', CommandSignalTests.pre)
+        self.assertIn('kwargs', CommandSignalTests.pre)
+
+        self.assertIn('args', CommandSignalTests.post)
+        self.assertIn('kwargs', CommandSignalTests.post)
+        self.assertIn('outcome', CommandSignalTests.post)

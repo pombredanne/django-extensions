@@ -19,13 +19,15 @@ __contributors__ = [
     "Justin Findlay <jfindlay@gmail.com>",
     "Alexander Houben <alexander@houben.ch>",
     "Joern Hees <gitdev@joernhees.de>",
+    "Kevin Cherepski <cherepski@gmail.com>",
 ]
 
 import os
+import six
 import datetime
 from django.utils.translation import activate as activate_language
 from django.utils.safestring import mark_safe
-from django.template import Context, loader
+from django.template import Context, loader, Template
 from django.db import models
 from django.db.models import get_models
 from django.db.models.fields.related import ForeignKey, OneToOneField, ManyToManyField, RelatedField
@@ -40,7 +42,7 @@ except ImportError:
 def parse_file_or_list(arg):
     if not arg:
         return []
-    if not ',' in arg and os.path.isfile(arg):
+    if ',' not in arg and os.path.isfile(arg):
         return [e.strip() for e in open(arg).readlines()]
     return arg.split(',')
 
@@ -76,7 +78,7 @@ def generate_dot(app_labels, **kwargs):
 
     for app_label in app_labels:
         app = models.get_app(app_label)
-        if not app in apps:
+        if app not in apps:
             apps.append(app)
 
     graphs = []
@@ -120,20 +122,24 @@ def generate_dot(app_labels, **kwargs):
             def consider(model_name):
                 if exclude_models and model_name in exclude_models:
                     return False
+                elif include_models and model_name not in include_models:
+                    return False
                 return not include_models or model_name in include_models
 
             if not consider(appmodel._meta.object_name):
                 continue
 
             if verbose_names and appmodel._meta.verbose_name:
-                model['label'] = appmodel._meta.verbose_name
+                model['label'] = appmodel._meta.verbose_name.decode("utf8")
             else:
                 model['label'] = model['name']
 
             # model attributes
             def add_attributes(field):
                 if verbose_names and field.verbose_name:
-                    label = field.verbose_name
+                    label = field.verbose_name.decode("utf8")
+                    if label.islower():
+                        label = label.capitalize()
                 else:
                     label = field.name
 
@@ -159,13 +165,13 @@ def generate_dot(app_labels, **kwargs):
 
             # find primary key and print it first, ignoring implicit id if other pk exists
             pk = appmodel._meta.pk
-            if not appmodel._meta.abstract and pk in attributes:
+            if pk and not appmodel._meta.abstract and pk in attributes:
                 add_attributes(pk)
 
             for field in attributes:
                 if skip_field(field):
                     continue
-                if field == pk:
+                if pk and field == pk:
                     continue
                 add_attributes(field)
 
@@ -182,17 +188,25 @@ def generate_dot(app_labels, **kwargs):
             # relations
             def add_relation(field, extras=""):
                 if verbose_names and field.verbose_name:
-                    label = field.verbose_name
+                    label = field.verbose_name.decode("utf8")
+                    if label.islower():
+                        label = label.capitalize()
                 else:
                     label = field.name
 
                 # show related field name
                 if hasattr(field, 'related_query_name'):
-                    label += ' (%s)' % field.related_query_name()
+                    related_query_name = field.related_query_name()
+                    if verbose_names and related_query_name.islower():
+                        related_query_name = related_query_name.replace('_', ' ').capitalize()
+                    label += ' (%s)' % related_query_name
 
-                # handle self-relationships
-                if field.rel.to == 'self':
-                    target_model = field.model
+                # handle self-relationships and lazy-relationships
+                if isinstance(field.rel.to, six.string_types):
+                    if field.rel.to == 'self':
+                        target_model = field.model
+                    else:
+                        raise Exception("Lazy relationship for model (%s) must be explicit for field (%s)" % (field.model.__name__, field.name))
                 else:
                     target_model = field.rel.to
 
@@ -269,6 +283,12 @@ def generate_dot(app_labels, **kwargs):
 
     now = datetime.datetime.now()
     t = loader.get_template('django_extensions/graph_models/digraph.dot')
+
+    if not isinstance(t, Template):
+        raise Exception("Default Django template loader isn't used. "
+                        "This can lead to the incorrect template rendering. "
+                        "Please, check the settings.")
+
     c = Context({
         'created_at': now.strftime("%Y-%m-%d %H:%M"),
         'cli_options': cli_options,

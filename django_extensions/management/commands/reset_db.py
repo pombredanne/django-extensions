@@ -6,7 +6,9 @@ from optparse import make_option
 
 from django.conf import settings
 from django.core.management.base import CommandError, BaseCommand
-from six.moves import input
+from six.moves import input, configparser
+
+from django_extensions.management.utils import signalcommand
 
 
 class Command(BaseCommand):
@@ -35,6 +37,7 @@ class Command(BaseCommand):
     )
     help = "Resets the database for this project."
 
+    @signalcommand
     def handle(self, *args, **options):
         """
         Resets the database for this project.
@@ -42,17 +45,32 @@ class Command(BaseCommand):
         Note: Transaction wrappers are in reverse as a work around for
         autocommit, anybody know how to do this the right way?
         """
+
+        if args:
+            raise CommandError("reset_db takes no arguments")
+
         router = options.get('router')
         dbinfo = settings.DATABASES.get(router)
         if dbinfo is None:
             raise CommandError("Unknown database router %s" % router)
 
         engine = dbinfo.get('ENGINE').split('.')[-1]
-        user = options.get('user') or dbinfo.get('USER')
-        password = options.get('password') or dbinfo.get('PASSWORD')
+
+        user = password = database_name = ''
+        if engine == 'mysql':
+            read_default_file = dbinfo.get('OPTIONS', {}).get('read_default_file')
+            if read_default_file:
+                config = configparser.ConfigParser()
+                config.read(read_default_file)
+                user = config.get('client', 'user')
+                password = config.get('client', 'password')
+                database_name = config.get('client', 'database')
+
+        user = options.get('user') or dbinfo.get('USER') or user
+        password = options.get('password') or dbinfo.get('PASSWORD') or password
         owner = options.get('owner') or user
 
-        database_name = options.get('dbname') or dbinfo.get('NAME')
+        database_name = options.get('dbname') or dbinfo.get('NAME') or database_name
         if database_name == '':
             raise CommandError("You need to specify DATABASE_NAME in your Django settings file.")
 
@@ -125,21 +143,25 @@ Type 'yes' to continue, or 'no' to cancel: """ % (database_name,))
             connection = Database.connect(conn_string)
             connection.set_isolation_level(0)  # autocommit false
             cursor = connection.cursor()
-            drop_query = 'DROP DATABASE %s;' % database_name
+            drop_query = "DROP DATABASE \"%s\";" % database_name
             logging.info('Executing... "' + drop_query + '"')
 
             try:
                 cursor.execute(drop_query)
             except Database.ProgrammingError as e:
-                logging.info("Error: %s" % str(e))
+                logging.exception("Error: %s" % str(e))
 
-            create_query = "CREATE DATABASE %s" % database_name
+            create_query = "CREATE DATABASE \"%s\"" % database_name
             if owner:
                 create_query += " WITH OWNER = \"%s\" " % owner
             create_query += " ENCODING = 'UTF8'"
 
             if engine == 'postgis':
-                create_query += ' TEMPLATE = template_postgis'
+                # fetch postgis template name if it exists
+                from django.contrib.gis.db.backends.postgis.creation import PostGISCreation
+                postgis_template = PostGISCreation(connection).template_postgis
+                if postgis_template is not None:
+                    create_query += ' TEMPLATE = %s' % postgis_template
 
             if settings.DEFAULT_TABLESPACE:
                 create_query += ' TABLESPACE = %s;' % settings.DEFAULT_TABLESPACE

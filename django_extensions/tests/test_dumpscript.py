@@ -6,40 +6,32 @@ if sys.version_info[:2] >= (2, 6):
 else:
     import compiler  # NOQA
 
-from django.test import TestCase
-
 from django.core.management import call_command
-from django_extensions.tests.models import Name, Note, Person
 
-from django.conf import settings
-from django.db.models import loading
+from django_extensions.tests.testapp.models import Name, Note, Person
+from django_extensions.tests.fields import FieldTestCase
 
 
-class DumpScriptTests(TestCase):
+class DumpScriptTests(FieldTestCase):
     def setUp(self):
+        super(DumpScriptTests, self).setUp()
+
         self.real_stdout = sys.stdout
         self.real_stderr = sys.stderr
         sys.stdout = six.StringIO()
         sys.stderr = six.StringIO()
 
-        self.original_installed_apps = settings.INSTALLED_APPS
-        settings.INSTALLED_APPS = list(settings.INSTALLED_APPS)
-        settings.INSTALLED_APPS.append('django_extensions.tests')
-        loading.cache.loaded = False
-        call_command('syncdb', verbosity=0)
-
     def tearDown(self):
+        super(DumpScriptTests, self).tearDown()
+
         sys.stdout = self.real_stdout
         sys.stderr = self.real_stderr
-        settings.INSTALLED_APPS.remove('django_extensions.tests')
-        settings.INSTALLED_APPS = self.original_installed_apps
-        loading.cache.loaded = False
 
     def test_runs(self):
         # lame test...does it run?
         n = Name(name='Gabriel')
         n.save()
-        call_command('dumpscript', 'tests')
+        call_command('dumpscript', 'django_extensions')
         self.assertTrue('Gabriel' in sys.stdout.getvalue())
 
     #----------------------------------------------------------------------
@@ -49,7 +41,7 @@ class DumpScriptTests(TestCase):
         n = Name(name='Mike')
         n.save()
         tmp_out = six.StringIO()
-        call_command('dumpscript', 'tests', stdout=tmp_out)
+        call_command('dumpscript', 'django_extensions', stdout=tmp_out)
         self.assertTrue('Mike' in tmp_out.getvalue())  # script should go to tmp_out
         self.assertEqual(0, len(sys.stdout.getvalue()))  # there should not be any output to sys.stdout
         tmp_out.close()
@@ -61,7 +53,7 @@ class DumpScriptTests(TestCase):
         n.save()
         tmp_err = six.StringIO()
         sys.stderr = six.StringIO()
-        call_command('dumpscript', 'tests', stderr=tmp_err)
+        call_command('dumpscript', 'django_extensions', stderr=tmp_err)
         self.assertTrue('Fred' in sys.stdout.getvalue())  # script should still go to stdout
         self.assertTrue('Name' in tmp_err.getvalue())  # error output should go to tmp_err
         self.assertEqual(0, len(sys.stderr.getvalue()))  # there should not be any output to sys.stderr
@@ -84,7 +76,7 @@ class DumpScriptTests(TestCase):
         note2.save()
         p2.notes.add(note1, note2)
         tmp_out = six.StringIO()
-        call_command('dumpscript', 'tests', stdout=tmp_out)
+        call_command('dumpscript', 'django_extensions', stdout=tmp_out)
         ast_syntax_tree = compiler.parse(tmp_out.getvalue())
         if hasattr(ast_syntax_tree, 'body'):
             self.assertTrue(len(ast_syntax_tree.body) > 1)
